@@ -87,7 +87,7 @@ go mod init myapi
 
 ```bash
 go get github.com/gin-gonic/gin
-go get github.com/delfDog/QingFeng
+go get github.com/delfDog/QingFeng@latest
 go install github.com/swaggo/swag/cmd/swag@latest
 ```
 
@@ -112,9 +112,11 @@ func main() {
 
     // 注册文档 UI
     r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
-        Title:    "我的 API",
+        Title:    "青峰API--wdc",
         BasePath: "/doc",
         DocPath:  "./docs/swagger.json",
+        AutoGenerate: true, // 启动时自动运行 swag init 生成文档 默认false
+
     }))
 
     // API 路由
@@ -130,6 +132,42 @@ func main() {
 func hello(c *gin.Context) {
     c.JSON(200, gin.H{"message": "Hello World"})
 }
+```
+
+### 3.1 完整的配置说明（只是说明可 步骤3即可正常运行）
+```go
+r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
+    // 文档标题
+    Title: "我的 API",
+    // 文档描述
+    Description: "API 文档描述",
+    // API 版本号
+    Version: "1.0.0",
+    // 文档路由前缀
+    BasePath: "/doc",
+    // swagger.json 文件路径
+    DocPath: "./docs/swagger.json",
+    // 直接传入 swagger JSON 内容（与 DocPath 二选一）
+    // DocJSON: []byte{},
+    // 是否启用在线调试
+    EnableDebug: true,
+    // 是否默认深色模式
+    DarkMode: false,
+    // UI 主题风格: ThemeDefault(默认) / ThemeMinimal(简约) / ThemeModern(现代)
+    UITheme: qingfeng.ThemeDefault,
+    // 全局请求头配置
+    GlobalHeaders: []qingfeng.Header{
+        {Key: "Authorization", Value: "Bearer your-token"},
+        // {Key: "X-API-Key", Value: "your-api-key"},
+    },
+    // 启动时自动运行 swag init 生成文档
+    AutoGenerate: true,
+    // swag 搜索目录（AutoGenerate 为 true 时生效）
+    SwagSearchDir: ".",
+    // swagger 文件输出目录（AutoGenerate 为 true 时生效）
+    SwagOutputDir: "./docs",
+}))
+
 ```
 
 ### 4. 生成文档并运行
