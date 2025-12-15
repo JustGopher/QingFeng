@@ -25,5 +25,5 @@ vendor/
 Thumbs.db
 
 # Build
-dist/
+
 build/
