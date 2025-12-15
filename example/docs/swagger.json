@@ -1,0 +1,448 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "示例项目 API",
+    "description": "这是一个示例项目的API文档，展示 go-knife4j 的功能",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    }
+  },
+  "host": "localhost:8080",
+  "basePath": "/api/v1",
+  "schemes": ["http"],
+  "tags": [
+    {
+      "name": "用户管理",
+      "description": "用户相关的接口"
+    },
+    {
+      "name": "订单管理",
+      "description": "订单相关的接口"
+    }
+  ],
+  "paths": {
+    "/users": {
+      "get": {
+        "tags": ["用户管理"],
+        "summary": "获取用户列表",
+        "description": "分页获取所有用户的列表",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码",
+            "type": "integer",
+            "default": 1
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "每页数量",
+            "type": "integer",
+            "default": 10
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键词",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "schema": {
+              "$ref": "#/definitions/UserListResponse"
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["用户管理"],
+        "summary": "创建用户",
+        "description": "创建一个新用户",
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "用户信息",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CreateUserRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "schema": {
+              "$ref": "#/definitions/UserResponse"
+            }
+          },
+          "400": {
+            "description": "参数错误"
+          }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "tags": ["用户管理"],
+        "summary": "获取用户详情",
+        "description": "根据ID获取用户详细信息",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "用户ID",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "schema": {
+              "$ref": "#/definitions/UserResponse"
+            }
+          },
+          "404": {
+            "description": "用户不存在"
+          }
+        }
+      },
+      "put": {
+        "tags": ["用户管理"],
+        "summary": "更新用户",
+        "description": "更新用户信息",
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "用户ID",
+            "required": true,
+            "type": "integer"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "description": "用户信息",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/UpdateUserRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["用户管理"],
+        "summary": "删除用户",
+        "description": "删除指定用户",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "用户ID",
+            "required": true,
+            "type": "integer"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          },
+          "404": {
+            "description": "用户不存在"
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "tags": ["订单管理"],
+        "summary": "获取订单列表",
+        "description": "获取当前用户的订单列表",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "订单状态",
+            "type": "string",
+            "enum": ["pending", "paid", "shipped", "completed", "cancelled"]
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "description": "认证Token",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "schema": {
+              "$ref": "#/definitions/OrderListResponse"
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["订单管理"],
+        "summary": "创建订单",
+        "description": "创建一个新订单",
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "description": "订单信息",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CreateOrderRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "User": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "用户ID",
+          "example": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "用户名",
+          "example": "张三"
+        },
+        "email": {
+          "type": "string",
+          "description": "邮箱",
+          "example": "zhangsan@example.com"
+        },
+        "age": {
+          "type": "integer",
+          "description": "年龄",
+          "example": 25
+        },
+        "avatar": {
+          "type": "string",
+          "description": "头像URL"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "创建时间",
+          "example": "2024-01-01T00:00:00Z"
+        }
+      }
+    },
+    "CreateUserRequest": {
+      "type": "object",
+      "required": ["name", "email"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "用户名",
+          "example": "张三"
+        },
+        "email": {
+          "type": "string",
+          "description": "邮箱",
+          "example": "zhangsan@example.com"
+        },
+        "age": {
+          "type": "integer",
+          "description": "年龄",
+          "example": 25
+        },
+        "password": {
+          "type": "string",
+          "description": "密码",
+          "example": "123456"
+        }
+      }
+    },
+    "UpdateUserRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "用户名"
+        },
+        "email": {
+          "type": "string",
+          "description": "邮箱"
+        },
+        "age": {
+          "type": "integer",
+          "description": "年龄"
+        }
+      }
+    },
+    "UserResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "example": 200
+        },
+        "message": {
+          "type": "string",
+          "example": "success"
+        },
+        "data": {
+          "$ref": "#/definitions/User"
+        }
+      }
+    },
+    "UserListResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "example": 200
+        },
+        "message": {
+          "type": "string",
+          "example": "success"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "list": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/User"
+              }
+            },
+            "total": {
+              "type": "integer",
+              "example": 100
+            }
+          }
+        }
+      }
+    },
+    "Order": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "订单ID"
+        },
+        "orderNo": {
+          "type": "string",
+          "description": "订单号",
+          "example": "ORD202401010001"
+        },
+        "status": {
+          "type": "string",
+          "description": "订单状态",
+          "enum": ["pending", "paid", "shipped", "completed", "cancelled"]
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "订单总金额",
+          "example": 99.99
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/OrderItem"
+          }
+        }
+      }
+    },
+    "OrderItem": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "integer",
+          "description": "商品ID"
+        },
+        "productName": {
+          "type": "string",
+          "description": "商品名称"
+        },
+        "quantity": {
+          "type": "integer",
+          "description": "数量"
+        },
+        "price": {
+          "type": "number",
+          "description": "单价"
+        }
+      }
+    },
+    "CreateOrderRequest": {
+      "type": "object",
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "description": "订单商品列表",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": {
+                "type": "integer",
+                "description": "商品ID"
+              },
+              "quantity": {
+                "type": "integer",
+                "description": "数量"
+              }
+            }
+          }
+        },
+        "remark": {
+          "type": "string",
+          "description": "订单备注"
+        }
+      }
+    },
+    "OrderListResponse": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Order"
+          }
+        }
+      }
+    }
+  }
+}
