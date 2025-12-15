@@ -17,6 +17,7 @@ func main() {
 	r := gin.Default()
 
 	// Register QingFeng documentation UI (注册青锋文档 UI)
+	// 可选主题: qingfeng.ThemeDefault, qingfeng.ThemeMinimal, qingfeng.ThemeModern
 	r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
 		Title:        "示例项目 API",
 		Description:  "这是一个示例项目的API文档",
@@ -25,7 +26,8 @@ func main() {
 		DocPath:      "./docs/swagger.json",
 		EnableDebug:  true,
 		DarkMode:     false,
-		AutoGenerate: true, // 启动时自动生成 swagger 文档，无需手动运行 swag init
+		AutoGenerate: true,                   // 启动时自动生成 swagger 文档
+		UITheme:      qingfeng.ThemeDefault,  // UI 主题: ThemeDefault, ThemeMinimal, ThemeModern
 	}))
 
 	// API routes

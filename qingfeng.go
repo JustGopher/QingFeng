@@ -15,8 +15,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-//go:embed ui/dist/*
+//go:embed ui/default/* ui/minimal/* ui/modern/*
 var uiFS embed.FS
+
+// UITheme represents available UI themes
+// UI 主题类型
+type UITheme string
+
+const (
+	// ThemeDefault is the default theme (原默认主题)
+	ThemeDefault UITheme = "default"
+	// ThemeMinimal is a minimal/clean theme (简约主题)
+	ThemeMinimal UITheme = "minimal"
+	// ThemeModern is a modern theme with gradients (现代主题)
+	ThemeModern UITheme = "modern"
+)
 
 // Header represents a custom HTTP header with key-value pair
 // 自定义 HTTP 请求头
@@ -56,6 +69,8 @@ type Config struct {
 	// SwagOutputDir is the output directory for swagger files (default: "./docs")
 	// swagger 文件输出目录，默认为 ./docs
 	SwagOutputDir string
+	// UITheme selects the UI theme: "default", "minimal", "modern" (UI 主题选择)
+	UITheme UITheme
 }
 
 // DefaultConfig returns a default configuration
@@ -85,8 +100,22 @@ func Handler(cfg Config) gin.HandlerFunc {
 		generateSwaggerDocs(cfg)
 	}
 
-	subFS, _ := fs.Sub(uiFS, "ui/dist")
-	fileServer := http.FileServer(http.FS(subFS))
+	// Prepare file servers for each theme
+	defaultFS, _ := fs.Sub(uiFS, "ui/default")
+	minimalFS, _ := fs.Sub(uiFS, "ui/minimal")
+	modernFS, _ := fs.Sub(uiFS, "ui/modern")
+
+	fileServers := map[string]http.Handler{
+		"default": http.FileServer(http.FS(defaultFS)),
+		"minimal": http.FileServer(http.FS(minimalFS)),
+		"modern":  http.FileServer(http.FS(modernFS)),
+	}
+
+	// Default theme from config
+	defaultTheme := string(cfg.UITheme)
+	if defaultTheme == "" {
+		defaultTheme = "default"
+	}
 
 	// Prepare config JSON for frontend
 	configJSON, _ := json.Marshal(map[string]interface{}{
@@ -96,6 +125,8 @@ func Handler(cfg Config) gin.HandlerFunc {
 		"enableDebug":   cfg.EnableDebug,
 		"darkMode":      cfg.DarkMode,
 		"globalHeaders": cfg.GlobalHeaders,
+		"defaultTheme":  defaultTheme,
+		"themes":        []string{"default", "minimal", "modern"},
 	})
 
 	return func(c *gin.Context) {
@@ -104,6 +135,16 @@ func Handler(cfg Config) gin.HandlerFunc {
 		// Remove base path prefix
 		if cfg.BasePath != "" && cfg.BasePath != "/" {
 			path = strings.TrimPrefix(path, cfg.BasePath)
+		}
+
+		// Get theme from query parameter or use default
+		theme := c.Query("theme")
+		if theme == "" {
+			theme = defaultTheme
+		}
+		// Validate theme
+		if _, ok := fileServers[theme]; !ok {
+			theme = defaultTheme
 		}
 
 		// Serve swagger.json
@@ -127,9 +168,9 @@ func Handler(cfg Config) gin.HandlerFunc {
 			return
 		}
 
-		// Serve static files
+		// Serve static files using selected theme
 		c.Request.URL.Path = path
-		fileServer.ServeHTTP(c.Writer, c.Request)
+		fileServers[theme].ServeHTTP(c.Writer, c.Request)
 	}
 }
 

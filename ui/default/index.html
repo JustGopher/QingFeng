@@ -15,6 +15,19 @@
             --danger: #ef4444;
             --info: #06b6d4;
         }
+        /* 主题色 - 蓝色 (默认) */
+        .theme-blue { --primary: #3b82f6; --primary-dark: #2563eb; }
+        /* 主题色 - 绿色 */
+        .theme-green { --primary: #22c55e; --primary-dark: #16a34a; }
+        /* 主题色 - 紫色 */
+        .theme-purple { --primary: #8b5cf6; --primary-dark: #7c3aed; }
+        /* 主题色 - 橙色 */
+        .theme-orange { --primary: #f97316; --primary-dark: #ea580c; }
+        /* 主题色 - 红色 */
+        .theme-red { --primary: #ef4444; --primary-dark: #dc2626; }
+        /* 主题色 - 青色 */
+        .theme-cyan { --primary: #06b6d4; --primary-dark: #0891b2; }
+        
         .dark {
             --bg-primary: #1e1e2e;
             --bg-secondary: #282a36;
@@ -90,12 +103,20 @@
             <div class="p-4 border-b" style="border-color: var(--border)">
                 <div class="flex items-center justify-between mb-3">
                     <h1 class="text-xl font-bold flex items-center gap-2">
-                        <i class="fas fa-book-open text-blue-500"></i>
+                        <i class="fas fa-book-open" style="color: var(--primary)"></i>
                         <span id="doc-title">API Docs</span>
                     </h1>
-                    <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
-                        <i class="fas fa-moon" id="theme-icon"></i>
-                    </button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="openUIThemeModal()" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700" title="切换UI风格">
+                            <i class="fas fa-swatchbook" style="color: var(--primary)"></i>
+                        </button>
+                        <button onclick="openThemeModal()" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700" title="切换主题色">
+                            <i class="fas fa-palette" style="color: var(--primary)"></i>
+                        </button>
+                        <button onclick="toggleDarkMode()" class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700" title="深色模式">
+                            <i class="fas fa-moon" id="theme-icon"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="relative">
                     <input type="text" id="search-input" placeholder="搜索接口..." 
@@ -309,6 +330,101 @@
                     </button>
                     <button onclick="clearTokenRules()" class="flex-1 py-2 rounded-lg border hover:bg-gray-100 dark:hover:bg-gray-700" style="border-color: var(--border)">
                         <i class="fas fa-trash mr-2"></i>清空
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Modal -->
+    <div id="theme-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeThemeModal()"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-sm">
+            <div class="card rounded-xl p-6 m-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <i class="fas fa-palette" style="color: var(--primary)"></i>选择主题色
+                    </h3>
+                    <button onclick="closeThemeModal()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <button onclick="setThemeColor('blue')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="blue" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #3b82f6"></div>
+                        <span class="text-sm">蓝色</span>
+                    </button>
+                    <button onclick="setThemeColor('green')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="green" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #22c55e"></div>
+                        <span class="text-sm">绿色</span>
+                    </button>
+                    <button onclick="setThemeColor('purple')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="purple" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #8b5cf6"></div>
+                        <span class="text-sm">紫色</span>
+                    </button>
+                    <button onclick="setThemeColor('orange')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="orange" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #f97316"></div>
+                        <span class="text-sm">橙色</span>
+                    </button>
+                    <button onclick="setThemeColor('red')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="red" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #ef4444"></div>
+                        <span class="text-sm">红色</span>
+                    </button>
+                    <button onclick="setThemeColor('cyan')" class="theme-btn p-4 rounded-lg border-2 hover:scale-105 transition-transform" data-theme="cyan" style="border-color: transparent">
+                        <div class="w-8 h-8 rounded-full mx-auto mb-2" style="background: #06b6d4"></div>
+                        <span class="text-sm">青色</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Theme Modal -->
+    <div id="ui-theme-modal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black bg-opacity-50" onclick="closeUIThemeModal()"></div>
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full max-w-md">
+            <div class="card rounded-xl p-6 m-4">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold flex items-center gap-2">
+                        <i class="fas fa-swatchbook" style="color: var(--primary)"></i>选择 UI 风格
+                    </h3>
+                    <button onclick="closeUIThemeModal()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="space-y-3">
+                    <button onclick="switchUITheme('default')" class="w-full p-4 rounded-xl border-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-all ui-theme-btn" data-ui-theme="default" style="border-color: var(--border)">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center text-white">
+                                <i class="fas fa-th-large"></i>
+                            </div>
+                            <div>
+                                <div class="font-semibold">Default 默认</div>
+                                <div class="text-sm" style="color: var(--text-secondary)">经典蓝色风格，功能完整</div>
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="switchUITheme('minimal')" class="w-full p-4 rounded-xl border-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-all ui-theme-btn" data-ui-theme="minimal" style="border-color: var(--border)">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg bg-gray-800 flex items-center justify-center text-white">
+                                <i class="fas fa-minus"></i>
+                            </div>
+                            <div>
+                                <div class="font-semibold">Minimal 简约</div>
+                                <div class="text-sm" style="color: var(--text-secondary)">黑白极简，专业干净</div>
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="switchUITheme('modern')" class="w-full p-4 rounded-xl border-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-all ui-theme-btn" data-ui-theme="modern" style="border-color: var(--border)">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-lg flex items-center justify-center text-white" style="background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)">
+                                <i class="fas fa-magic"></i>
+                            </div>
+                            <div>
+                                <div class="font-semibold">Modern 现代</div>
+                                <div class="text-sm" style="color: var(--text-secondary)">渐变毛玻璃，视觉冲击</div>
+                            </div>
+                        </div>
                     </button>
                 </div>
             </div>

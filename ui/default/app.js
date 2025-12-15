@@ -2,12 +2,14 @@
 let swaggerData = null;
 let currentApi = null;
 let isDarkMode = false;
+let currentThemeColor = 'blue'; // 当前主题色
 let config = {};
 let globalHeaders = []; // 用户自定义的全局请求头
 let tokenExtractRules = []; // Token 自动提取规则
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+    loadThemeFromStorage();
     await loadConfig();
     await loadSwagger();
     setupSearch();
@@ -817,11 +819,131 @@ async function sendRequest() {
     }
 }
 
-// Toggle theme
-function toggleTheme() {
+// Toggle dark mode (切换深色模式)
+function toggleDarkMode() {
     isDarkMode = !isDarkMode;
-    document.body.className = isDarkMode ? 'dark' : 'light';
+    applyTheme();
+    saveThemeToStorage();
+}
+
+// Legacy function name for compatibility
+function toggleTheme() {
+    toggleDarkMode();
+}
+
+// ==================== 主题色切换功能 ====================
+
+// Load theme from localStorage (从本地存储加载主题)
+function loadThemeFromStorage() {
+    try {
+        const savedDarkMode = localStorage.getItem('qingfeng_dark_mode');
+        const savedThemeColor = localStorage.getItem('qingfeng_theme_color');
+        
+        if (savedDarkMode !== null) {
+            isDarkMode = savedDarkMode === 'true';
+        }
+        if (savedThemeColor) {
+            currentThemeColor = savedThemeColor;
+        }
+        applyTheme();
+    } catch (e) {
+        console.log('Failed to load theme from storage');
+    }
+}
+
+// Save theme to localStorage (保存主题到本地存储)
+function saveThemeToStorage() {
+    try {
+        localStorage.setItem('qingfeng_dark_mode', isDarkMode);
+        localStorage.setItem('qingfeng_theme_color', currentThemeColor);
+    } catch (e) {
+        console.log('Failed to save theme to storage');
+    }
+}
+
+// Apply current theme (应用当前主题)
+function applyTheme() {
+    // 设置深色/浅色模式
+    const modeClass = isDarkMode ? 'dark' : 'light';
+    const themeClass = `theme-${currentThemeColor}`;
+    document.body.className = `${modeClass} ${themeClass}`;
+    
+    // 更新图标
     document.getElementById('theme-icon').className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
+    
+    // 更新主题选择器中的选中状态
+    updateThemeButtonStates();
+}
+
+// Update theme button states (更新主题按钮状态)
+function updateThemeButtonStates() {
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        const theme = btn.dataset.theme;
+        if (theme === currentThemeColor) {
+            btn.style.borderColor = 'var(--primary)';
+        } else {
+            btn.style.borderColor = 'transparent';
+        }
+    });
+}
+
+// Open theme modal (打开主题选择弹窗)
+function openThemeModal() {
+    document.getElementById('theme-modal').classList.remove('hidden');
+    updateThemeButtonStates();
+}
+
+// Close theme modal (关闭主题选择弹窗)
+function closeThemeModal() {
+    document.getElementById('theme-modal').classList.add('hidden');
+}
+
+// Set theme color (设置主题色)
+function setThemeColor(color) {
+    currentThemeColor = color;
+    applyTheme();
+    saveThemeToStorage();
+    closeThemeModal();
+}
+
+// ==================== UI 风格切换功能 ====================
+
+// Open UI theme modal (打开 UI 风格选择弹窗)
+function openUIThemeModal() {
+    document.getElementById('ui-theme-modal').classList.remove('hidden');
+    updateUIThemeButtonStates();
+}
+
+// Close UI theme modal (关闭 UI 风格选择弹窗)
+function closeUIThemeModal() {
+    document.getElementById('ui-theme-modal').classList.add('hidden');
+}
+
+// Update UI theme button states (更新 UI 风格按钮状态)
+function updateUIThemeButtonStates() {
+    const currentUITheme = getCurrentUITheme();
+    document.querySelectorAll('.ui-theme-btn').forEach(btn => {
+        const theme = btn.dataset.uiTheme;
+        if (theme === currentUITheme) {
+            btn.style.borderColor = 'var(--primary)';
+        } else {
+            btn.style.borderColor = 'var(--border)';
+        }
+    });
+}
+
+// Get current UI theme from URL (从 URL 获取当前 UI 风格)
+function getCurrentUITheme() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('theme') || 'default';
+}
+
+// Switch UI theme (切换 UI 风格)
+function switchUITheme(theme) {
+    // 保存当前的设置到 localStorage，以便在新主题中恢复
+    const currentUrl = new URL(window.location.href);
+    currentUrl.searchParams.set('theme', theme);
+    window.location.href = currentUrl.toString();
 }
 
 // Export documentation
