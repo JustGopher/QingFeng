@@ -23,19 +23,26 @@ English | [中文](./README.md)
 ### Online Debug
 ![Online Debug](./screenshots/debug.png)
 
+### Mobile
+| Light Mode | Dark Mode |
+|:----------:|:---------:|
+| ![Mobile Light](./screenshots/mobile-light.png) | ![Mobile Dark](./screenshots/mobile-dark.png) |
+
 ## ✨ Features
 
 - 🎨 **Multiple Themes** - Default, Minimal, Modern UI styles
 - 🌓 **Dark/Light Mode** - Theme switching support
 - 🎯 **Theme Colors** - Blue, Green, Purple, Orange, Red, Cyan
-- 🔍 **Quick Search** - Real-time API search
+- 🔍 **Quick Search** - Real-time API search (Ctrl+K shortcut)
 - 🐛 **Online Debug** - Built-in API testing tool, like Postman
 - 🔑 **Global Headers** - Configure global headers (e.g., Authorization)
 - 🪄 **Token Auto-Extract** - Auto-extract token from response
 - 🔄 **Auto Generate** - Auto run swag init on startup
 - 📦 **Zero Frontend Dependencies** - Embedded with embed.FS
 - 🚀 **Easy Integration** - One line of code to integrate
-- 📱 **Responsive Design** - Mobile friendly
+- 📱 **Mobile Support** - Fully responsive with drawer navigation
+- 💾 **Persistent Settings** - Theme and settings auto-saved locally
+- ✨ **JSON Syntax Highlighting** - Colorful response display
 
 ## 🔄 Drop-in Replacement
 
@@ -223,6 +230,17 @@ Three UI styles available, configurable via `UITheme` or switchable in the inter
 
 Switch theme via URL parameter: `http://localhost:8080/doc/?theme=modern`
 
+Theme selection is automatically saved to browser local storage and restored on next visit.
+
+## 📱 Mobile Support
+
+QingFeng Swag is fully optimized for mobile devices:
+
+- 📲 **Drawer Navigation** - Tap the menu button to open API list
+- 🎯 **Top Action Bar** - Quick access to Headers, Token, Theme settings
+- 💾 **Settings Sync** - Theme and settings sync across devices
+- 🌓 **Dark Mode** - One-tap toggle in the top right corner
+
 ## ⚙️ Configuration
 
 | Parameter | Type | Default | Description |
@@ -240,6 +258,47 @@ Switch theme via URL parameter: `http://localhost:8080/doc/?theme=modern`
 | AutoGenerate | bool | false | Auto run swag init on startup |
 | SwagSearchDir | string | "." | Swag search directory |
 | SwagOutputDir | string | "./docs" | Swagger output directory |
+| Logo | string | "" | Custom logo URL or base64 |
+| LogoLink | string | "" | URL to navigate when clicking logo |
+| Environments | []Environment | nil | Multi-environment configuration |
+
+## 🌍 Multi-Environment Support
+
+Configure multiple environments to easily switch between dev, test, and production:
+
+```go
+r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
+    Title:    "My API",
+    BasePath: "/doc",
+    DocPath:  "./docs/swagger.json",
+    Environments: []qingfeng.Environment{
+        {Name: "Local Dev", BaseURL: "http://localhost:8080/api/v1"},
+        {Name: "Test", BaseURL: "https://test-api.example.com/api/v1"},
+        {Name: "Production", BaseURL: "https://api.example.com/api/v1"},
+    },
+}))
+```
+
+## 🎨 Custom Logo
+
+Configure a custom logo:
+
+```go
+r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
+    Title:    "My API",
+    BasePath: "/doc",
+    DocPath:  "./docs/swagger.json",
+    Logo:     "https://example.com/logo.png", // or base64
+    LogoLink: "https://example.com",          // click to navigate
+}))
+```
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Function |
+|----------|----------|
+| `Ctrl/Cmd + K` | Focus search box |
+| `Escape` | Close modal |
 
 ## 🔑 Global Headers
 

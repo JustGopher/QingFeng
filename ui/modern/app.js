@@ -1,21 +1,57 @@
 // QingFeng Swagger Frontend Application
+// 版本号从后端注入
+let QINGFENG_VERSION = '1.3.0';
+
 let swaggerData = null;
 let currentApi = null;
 let isDarkMode = false;
-let currentThemeColor = 'blue'; // 当前主题色
+let currentThemeColor = 'blue';
 let config = {};
-let globalHeaders = []; // 用户自定义的全局请求头
-let tokenExtractRules = []; // Token 自动提取规则
+let globalHeaders = [];
+let tokenExtractRules = [];
+let environments = [];
+let currentEnvIndex = 0;
+let bodyTemplates = {}; // 请求体模板
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     loadThemeFromStorage();
+    loadUIThemeFromStorage();
     await loadConfig();
     await loadSwagger();
     setupSearch();
     loadGlobalHeadersFromStorage();
     loadTokenExtractRulesFromStorage();
+    loadBodyTemplates();
+    displayVersion();
+    setupKeyboardShortcuts();
 });
+
+// Display version in footer
+function displayVersion() {
+    const footer = document.querySelector('aside > div:last-child');
+    if (footer) {
+        footer.innerHTML = `Powered by <a href="https://github.com/delfDog/QingFeng" class="text-blue-500 hover:underline">青峰</a> · v${QINGFENG_VERSION}`;
+    }
+}
+
+// Setup keyboard shortcuts
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl/Cmd + K: 聚焦搜索框
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            document.getElementById('search-input')?.focus();
+        }
+        // Escape: 关闭弹窗
+        if (e.key === 'Escape') {
+            closeGlobalHeadersModal();
+            closeTokenExtractModal();
+            closeThemeModal();
+            closeUIThemeModal();
+        }
+    });
+}
 
 // Load configuration
 async function loadConfig() {
@@ -24,25 +60,127 @@ async function loadConfig() {
         config = await res.json();
         document.getElementById('doc-title').textContent = config.title || 'API Docs';
         document.title = config.title || 'API Documentation';
+        
+        // 注入版本号
+        if (config.qingfengVersion) {
+            QINGFENG_VERSION = config.qingfengVersion;
+        }
+        
+        // 加载自定义 Logo
+        if (config.logo) {
+            setupCustomLogo(config.logo, config.logoLink);
+        }
+        
+        // 加载环境配置
+        if (config.environments && config.environments.length > 0) {
+            environments = config.environments;
+            loadCurrentEnvFromStorage();
+            setupEnvironmentSelector();
+        }
+        
         if (config.darkMode) {
-            toggleTheme();
+            toggleDarkMode();
         }
     } catch (e) {
         console.log('Using default config');
     }
 }
 
+// 设置自定义 Logo
+function setupCustomLogo(logo, link) {
+    const titleEl = document.getElementById('doc-title');
+    if (!titleEl) return;
+    
+    const parent = titleEl.parentElement;
+    const logoHtml = `
+        <${link ? `a href="${link}" target="_blank"` : 'span'} class="flex items-center gap-2">
+            <img src="${logo}" alt="Logo" class="h-8 w-8 object-contain rounded">
+            <span id="doc-title">${config.title || 'API Docs'}</span>
+        </${link ? 'a' : 'span'}>
+    `;
+    
+    // 替换原有的标题
+    const icon = parent.querySelector('i');
+    if (icon) icon.remove();
+    titleEl.outerHTML = logoHtml;
+}
+
+// 设置环境选择器
+function setupEnvironmentSelector() {
+    const headerEl = document.querySelector('.desktop-header') || document.querySelector('header');
+    if (!headerEl || environments.length === 0) return;
+    
+    const envSelector = document.createElement('div');
+    envSelector.className = 'flex items-center gap-2 mr-4';
+    envSelector.innerHTML = `
+        <i class="fas fa-server text-sm" style="color: var(--text-secondary)"></i>
+        <select id="env-selector" onchange="switchEnvironment(this.value)" 
+                class="input-field px-3 py-1.5 rounded-lg text-sm cursor-pointer">
+            ${environments.map((env, i) => `
+                <option value="${i}" ${i === currentEnvIndex ? 'selected' : ''}>${env.name}</option>
+            `).join('')}
+        </select>
+    `;
+    
+    const firstChild = headerEl.firstChild;
+    headerEl.insertBefore(envSelector, firstChild);
+}
+
+// 切换环境
+function switchEnvironment(index) {
+    currentEnvIndex = parseInt(index);
+    saveCurrentEnvToStorage();
+    showToast(`已切换到: ${environments[currentEnvIndex].name}`);
+}
+
+// 获取当前环境的 baseUrl
+function getCurrentBaseUrl() {
+    if (environments.length > 0 && environments[currentEnvIndex]) {
+        return environments[currentEnvIndex].baseUrl;
+    }
+    return swaggerData?.basePath || '';
+}
+
+// 保存当前环境到 storage
+function saveCurrentEnvToStorage() {
+    try {
+        localStorage.setItem('qingfeng_current_env', currentEnvIndex.toString());
+    } catch (e) {}
+}
+
+// 从 storage 加载当前环境
+function loadCurrentEnvFromStorage() {
+    try {
+        const saved = localStorage.getItem('qingfeng_current_env');
+        if (saved !== null) {
+            const index = parseInt(saved);
+            if (index >= 0 && index < environments.length) {
+                currentEnvIndex = index;
+            }
+        }
+    } catch (e) {}
+}
+
 // Load Swagger JSON
 async function loadSwagger() {
+    const container = document.getElementById('api-list');
     try {
         const res = await fetch('./swagger.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         swaggerData = await res.json();
         renderApiList();
     } catch (e) {
-        document.getElementById('api-list').innerHTML = `
-            <div class="text-center py-8 text-red-500">
-                <i class="fas fa-exclamation-circle text-2xl"></i>
-                <p class="mt-2">加载失败，请检查 swagger.json</p>
+        container.innerHTML = `
+            <div class="text-center py-8">
+                <i class="fas fa-exclamation-triangle text-4xl text-yellow-500 mb-3"></i>
+                <p class="text-red-500 font-medium">加载失败</p>
+                <p class="text-sm mt-2" style="color: var(--text-secondary)">
+                    请检查 swagger.json 是否存在<br>
+                    <code class="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded mt-2 inline-block">${e.message}</code>
+                </p>
+                <button onclick="location.reload()" class="mt-4 px-4 py-2 rounded-lg text-sm" style="background: var(--primary); color: white">
+                    <i class="fas fa-redo mr-2"></i>重试
+                </button>
             </div>
         `;
     }
@@ -54,7 +192,6 @@ function renderApiList(filter = '') {
     const paths = swaggerData.paths || {};
     const tags = swaggerData.tags || [];
     
-    // Group APIs by tag
     const grouped = {};
     const filterLower = filter.toLowerCase();
     
@@ -75,26 +212,30 @@ function renderApiList(filter = '') {
         }
     }
     
-    // Render
     let html = '';
+    const apiCount = Object.values(grouped).reduce((sum, apis) => sum + apis.length, 0);
+    
     for (const [tag, apis] of Object.entries(grouped)) {
         const tagInfo = tags.find(t => t.name === tag) || { name: tag, description: '' };
+        const isExpanded = getGroupState(tagInfo.name);
         html += `
             <div class="tag-group mb-2">
                 <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" onclick="toggleGroup(this)">
                     <span><i class="fas fa-folder text-yellow-500 mr-2"></i>${tagInfo.name}</span>
                     <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${apis.length}</span>
                 </div>
-                <div class="tag-apis pl-2">
+                <div class="tag-apis pl-2" style="display: ${isExpanded ? 'block' : 'none'}">
         `;
         
         for (const { path, method, api } of apis) {
             const methodClass = `method-${method.toLowerCase()}`;
+            const deprecated = api.deprecated ? 'opacity-50' : '';
             html += `
-                <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm" 
+                <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${deprecated}" 
                      onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
                     <span class="${methodClass} px-2 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
                     <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
+                    ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs" title="已废弃"></i>' : ''}
                 </div>
             `;
         }
@@ -102,74 +243,112 @@ function renderApiList(filter = '') {
         html += '</div></div>';
     }
     
-    container.innerHTML = html || '<p class="text-center py-8" style="color: var(--text-secondary)">没有找到接口</p>';
+    if (!html) {
+        html = `<p class="text-center py-8" style="color: var(--text-secondary)">
+            ${filter ? '没有找到匹配的接口' : '暂无接口'}
+        </p>`;
+    }
+    
+    container.innerHTML = html;
 }
 
-// Toggle tag group
 function toggleGroup(el) {
     const apis = el.nextElementSibling;
-    apis.style.display = apis.style.display === 'none' ? 'block' : 'none';
+    const tagName = el.textContent?.trim()?.split('\n')[0]?.trim();
+    const isHidden = apis.style.display === 'none';
+    
+    apis.style.display = isHidden ? 'block' : 'none';
+    
+    // 保存折叠状态
+    saveGroupState(tagName, isHidden);
 }
 
-// Setup search
+// 保存分组折叠状态
+function saveGroupState(tagName, isExpanded) {
+    try {
+        const states = JSON.parse(sessionStorage.getItem('qingfeng_group_states') || '{}');
+        states[tagName] = isExpanded;
+        sessionStorage.setItem('qingfeng_group_states', JSON.stringify(states));
+    } catch (e) {}
+}
+
+// 获取分组折叠状态
+function getGroupState(tagName) {
+    try {
+        const states = JSON.parse(sessionStorage.getItem('qingfeng_group_states') || '{}');
+        return states[tagName] !== false; // 默认展开
+    } catch (e) {
+        return true;
+    }
+}
+
 function setupSearch() {
     const input = document.getElementById('search-input');
     let timeout;
     input.addEventListener('input', (e) => {
         clearTimeout(timeout);
-        timeout = setTimeout(() => renderApiList(e.target.value), 200);
+        timeout = setTimeout(() => renderApiList(e.target.value), 150);
     });
 }
 
-// Select API
 function selectApi(path, method) {
-    // Update active state
     document.querySelectorAll('.api-item').forEach(el => el.classList.remove('active'));
     document.querySelector(`.api-item[data-path="${path}"][data-method="${method}"]`)?.classList.add('active');
     
     const api = swaggerData.paths[path][method];
     currentApi = { path, method, api };
     
-    // Show detail panel
     document.getElementById('welcome-panel').classList.add('hidden');
     document.getElementById('api-detail-panel').classList.remove('hidden');
     
-    // Update header
     document.getElementById('detail-method').textContent = method.toUpperCase();
     document.getElementById('detail-method').className = `method-${method} px-3 py-1 rounded text-white text-sm font-bold uppercase`;
     document.getElementById('detail-path').textContent = path;
     document.getElementById('detail-summary').textContent = api.summary || '未命名接口';
     document.getElementById('detail-description').textContent = api.description || '暂无描述';
     
-    // Deprecated
     const deprecatedEl = document.getElementById('detail-deprecated');
-    if (api.deprecated) {
-        deprecatedEl.classList.remove('hidden');
-    } else {
-        deprecatedEl.classList.add('hidden');
-    }
+    deprecatedEl.classList.toggle('hidden', !api.deprecated);
     
-    // Update current api info
     document.getElementById('current-api-info').innerHTML = `
         <h2 class="text-lg font-semibold">${api.summary || path}</h2>
         <p class="text-sm" style="color: var(--text-secondary)">${method.toUpperCase()} ${path}</p>
     `;
     
-    // Render parameters
     renderParameters(api);
-    
-    // Render request body
     renderRequestBody(api);
-    
-    // Render debug panel
     renderDebugPanel(api, path);
     
-    // Clear response
-    document.getElementById('response-content').textContent = '点击"发送请求"查看响应结果';
-    document.getElementById('response-info').classList.add('hidden');
+    // 恢复保存的响应结果
+    restoreResponse();
 }
 
-// Render parameters table
+// 恢复保存的响应结果
+function restoreResponse() {
+    if (!currentApi) return;
+    const savedData = getDebugData(currentApi.path, currentApi.method);
+    
+    if (savedData.response) {
+        const { status, time, content, isError } = savedData.response;
+        document.getElementById('response-info').classList.remove('hidden');
+        document.getElementById('response-status').textContent = status;
+        document.getElementById('response-status').className = `px-3 py-1 rounded text-white text-sm font-bold ${isError ? 'bg-red-500' : 'bg-green-500'}`;
+        document.getElementById('response-time').textContent = time ? `${time}ms` : '';
+        document.getElementById('response-content').innerHTML = content;
+    } else {
+        document.getElementById('response-content').textContent = '点击"发送请求"查看响应结果';
+        document.getElementById('response-info').classList.add('hidden');
+    }
+}
+
+// 保存响应结果
+function saveResponse(status, time, content, isError) {
+    if (!currentApi) return;
+    const data = getDebugData(currentApi.path, currentApi.method);
+    data.response = { status, time, content, isError };
+    saveDebugData(currentApi.path, currentApi.method, data);
+}
+
 function renderParameters(api) {
     const params = api.parameters || [];
     const tbody = document.getElementById('params-table');
@@ -193,7 +372,6 @@ function renderParameters(api) {
     `).join('');
 }
 
-// Render request body
 function renderRequestBody(api) {
     const section = document.getElementById('request-body-section');
     const content = document.getElementById('request-body-content');
@@ -205,26 +383,22 @@ function renderRequestBody(api) {
     
     section.classList.remove('hidden');
     
-    // Try to get schema
     let schema = null;
     if (api.requestBody?.content?.['application/json']?.schema) {
         schema = api.requestBody.content['application/json'].schema;
     } else {
         const bodyParam = api.parameters?.find(p => p.in === 'body');
-        if (bodyParam?.schema) {
-            schema = bodyParam.schema;
-        }
+        if (bodyParam?.schema) schema = bodyParam.schema;
     }
     
     if (schema) {
         const example = generateExample(schema);
-        content.textContent = JSON.stringify(example, null, 2);
+        content.innerHTML = syntaxHighlight(JSON.stringify(example, null, 2));
     } else {
         content.textContent = '// 请求体结构';
     }
 }
 
-// Generate example from schema
 function generateExample(schema, depth = 0) {
     if (depth > 5) return {};
     
@@ -259,19 +433,41 @@ function generateExample(schema, depth = 0) {
     }
 }
 
-// Render debug panel
+// JSON 语法高亮
+function syntaxHighlight(json) {
+    json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+        let cls = 'text-orange-500'; // number
+        if (/^"/.test(match)) {
+            if (/:$/.test(match)) {
+                cls = 'text-blue-500'; // key
+            } else {
+                cls = 'text-green-500'; // string
+            }
+        } else if (/true|false/.test(match)) {
+            cls = 'text-purple-500'; // boolean
+        } else if (/null/.test(match)) {
+            cls = 'text-gray-500'; // null
+        }
+        return `<span class="${cls}">${match}</span>`;
+    });
+}
+
 function renderDebugPanel(api, path) {
     const params = api.parameters || [];
     const container = document.getElementById('debug-params-container');
     const bodyContainer = document.getElementById('debug-body-container');
     
-    // Render global headers (渲染全局请求头)
     renderGlobalHeaders();
     
-    // Render parameter inputs
+    // 获取保存的调试数据
+    const savedData = getDebugData(currentApi.path, currentApi.method);
+    
     const nonBodyParams = params.filter(p => p.in !== 'body');
     if (nonBodyParams.length > 0) {
-        container.innerHTML = nonBodyParams.map(p => `
+        container.innerHTML = nonBodyParams.map(p => {
+            const savedValue = savedData.params?.[p.name] || '';
+            return `
             <div class="mb-3">
                 <label class="block text-sm font-medium mb-1">
                     ${p.name} 
@@ -280,28 +476,184 @@ function renderDebugPanel(api, path) {
                 </label>
                 <input type="text" class="input-field w-full rounded-lg px-3 py-2" 
                        data-param="${p.name}" data-in="${p.in}" 
-                       placeholder="${p.description || p.name}">
+                       placeholder="${p.description || p.name}"
+                       value="${escapeHtml(savedValue)}"
+                       oninput="saveDebugParam('${p.name}', this.value)">
             </div>
-        `).join('');
+        `}).join('');
     } else {
         container.innerHTML = '';
     }
     
-    // Show body input for POST/PUT/PATCH
     const hasBody = api.requestBody || params.some(p => p.in === 'body');
     if (hasBody) {
         bodyContainer.classList.remove('hidden');
         const bodyParam = params.find(p => p.in === 'body');
         const schema = api.requestBody?.content?.['application/json']?.schema || bodyParam?.schema;
-        if (schema) {
+        
+        // 优先使用保存的 body，否则生成示例
+        if (savedData.body) {
+            document.getElementById('debug-body').value = savedData.body;
+        } else if (schema) {
             document.getElementById('debug-body').value = JSON.stringify(generateExample(schema), null, 2);
         }
+        
+        // 监听 body 变化
+        document.getElementById('debug-body').oninput = function() {
+            saveDebugBody(this.value);
+        };
     } else {
         bodyContainer.classList.add('hidden');
     }
 }
 
-// Render global headers display in debug panel (渲染调试面板中的全局请求头显示)
+// ==================== 调试数据持久化 ====================
+
+function getDebugStorageKey(path, method) {
+    return `qingfeng_debug_${method}_${path}`;
+}
+
+function getDebugData(path, method) {
+    try {
+        const key = getDebugStorageKey(path, method);
+        const saved = sessionStorage.getItem(key);
+        return saved ? JSON.parse(saved) : { params: {}, body: '', response: null };
+    } catch (e) {
+        return { params: {}, body: '', response: null };
+    }
+}
+
+function saveDebugData(path, method, data) {
+    try {
+        const key = getDebugStorageKey(path, method);
+        sessionStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {}
+}
+
+function saveDebugParam(paramName, value) {
+    if (!currentApi) return;
+    const data = getDebugData(currentApi.path, currentApi.method);
+    data.params[paramName] = value;
+    saveDebugData(currentApi.path, currentApi.method, data);
+}
+
+function saveDebugBody(value) {
+    if (!currentApi) return;
+    const data = getDebugData(currentApi.path, currentApi.method);
+    data.body = value;
+    saveDebugData(currentApi.path, currentApi.method, data);
+}
+
+// ==================== 请求体模板 ====================
+
+function loadBodyTemplates() {
+    try {
+        const saved = localStorage.getItem('qingfeng_body_templates');
+        if (saved) bodyTemplates = JSON.parse(saved);
+    } catch (e) {}
+}
+
+function saveBodyTemplates() {
+    try {
+        localStorage.setItem('qingfeng_body_templates', JSON.stringify(bodyTemplates));
+    } catch (e) {}
+}
+
+function getTemplateKey(path, method) {
+    return `${method}_${path}`;
+}
+
+function saveAsTemplate() {
+    if (!currentApi) return;
+    
+    const bodyInput = document.getElementById('debug-body');
+    if (!bodyInput || !bodyInput.value.trim()) {
+        showToast('请求体为空', 'error');
+        return;
+    }
+    
+    const name = prompt('请输入模板名称:', `模板 ${new Date().toLocaleString()}`);
+    if (!name) return;
+    
+    const key = getTemplateKey(currentApi.path, currentApi.method);
+    if (!bodyTemplates[key]) bodyTemplates[key] = [];
+    
+    bodyTemplates[key].push({
+        name: name,
+        body: bodyInput.value,
+        createdAt: Date.now()
+    });
+    
+    saveBodyTemplates();
+    showToast('模板已保存');
+    renderTemplateList();
+}
+
+function loadTemplate(index) {
+    if (!currentApi) return;
+    
+    const key = getTemplateKey(currentApi.path, currentApi.method);
+    const templates = bodyTemplates[key] || [];
+    
+    if (templates[index]) {
+        document.getElementById('debug-body').value = templates[index].body;
+        saveDebugBody(templates[index].body);
+        showToast(`已加载: ${templates[index].name}`);
+    }
+}
+
+function deleteTemplate(index) {
+    if (!currentApi) return;
+    
+    const key = getTemplateKey(currentApi.path, currentApi.method);
+    if (bodyTemplates[key]) {
+        bodyTemplates[key].splice(index, 1);
+        saveBodyTemplates();
+        renderTemplateList();
+        showToast('模板已删除');
+    }
+}
+
+function renderTemplateList() {
+    const container = document.getElementById('template-list');
+    if (!container || !currentApi) return;
+    
+    const key = getTemplateKey(currentApi.path, currentApi.method);
+    const templates = bodyTemplates[key] || [];
+    
+    if (templates.length === 0) {
+        container.innerHTML = '<div class="text-sm" style="color: var(--text-secondary)">暂无保存的模板</div>';
+        return;
+    }
+    
+    container.innerHTML = templates.map((t, i) => `
+        <div class="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer group" onclick="loadTemplate(${i})">
+            <span class="text-sm truncate flex-1">${escapeHtml(t.name)}</span>
+            <button onclick="event.stopPropagation(); deleteTemplate(${i})" class="text-red-500 opacity-0 group-hover:opacity-100 p-1">
+                <i class="fas fa-trash-alt text-xs"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function toggleTemplateDropdown() {
+    const dropdown = document.getElementById('template-dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('hidden');
+        if (!dropdown.classList.contains('hidden')) {
+            renderTemplateList();
+        }
+    }
+}
+
+// 点击外部关闭下拉框
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('template-dropdown');
+    if (dropdown && !e.target.closest('#template-dropdown') && !e.target.closest('[onclick*="toggleTemplateDropdown"]')) {
+        dropdown.classList.add('hidden');
+    }
+});
+
 function renderGlobalHeaders() {
     const container = document.getElementById('global-headers-container');
     const list = document.getElementById('global-headers-list');
@@ -321,32 +673,26 @@ function renderGlobalHeaders() {
     }
 }
 
-// Load global headers from localStorage (从本地存储加载全局请求头)
 function loadGlobalHeadersFromStorage() {
     try {
         const saved = localStorage.getItem('qingfeng_global_headers');
         if (saved) {
             globalHeaders = JSON.parse(saved);
-        } else if (config.globalHeaders && config.globalHeaders.length > 0) {
-            // 如果本地没有保存，使用后端预设的默认值
+        } else if (config.globalHeaders?.length > 0) {
             globalHeaders = [...config.globalHeaders];
         }
         updateHeadersCount();
     } catch (e) {
-        console.log('Failed to load global headers from storage');
+        console.log('Failed to load global headers');
     }
 }
 
-// Save global headers to localStorage (保存全局请求头到本地存储)
 function saveGlobalHeadersToStorage() {
     try {
         localStorage.setItem('qingfeng_global_headers', JSON.stringify(globalHeaders));
-    } catch (e) {
-        console.log('Failed to save global headers to storage');
-    }
+    } catch (e) {}
 }
 
-// Update headers count badge (更新请求头数量徽章)
 function updateHeadersCount() {
     const count = globalHeaders.filter(h => h.key && h.value).length;
     const badge = document.getElementById('headers-count');
@@ -358,34 +704,26 @@ function updateHeadersCount() {
     }
 }
 
-// Open global headers modal (打开全局请求头弹窗)
 function openGlobalHeadersModal() {
     document.getElementById('global-headers-modal').classList.remove('hidden');
     renderGlobalHeadersInputs();
 }
 
-// Close global headers modal (关闭全局请求头弹窗)
 function closeGlobalHeadersModal() {
     document.getElementById('global-headers-modal').classList.add('hidden');
 }
 
-// Render global headers inputs in modal (渲染弹窗中的请求头输入框)
 function renderGlobalHeadersInputs() {
     const container = document.getElementById('global-headers-inputs');
-    
-    if (globalHeaders.length === 0) {
-        globalHeaders.push({ key: '', value: '' });
-    }
+    if (globalHeaders.length === 0) globalHeaders.push({ key: '', value: '' });
     
     container.innerHTML = globalHeaders.map((h, i) => `
         <div class="flex gap-2 items-center" data-index="${i}">
             <input type="text" class="input-field flex-1 rounded-lg px-3 py-2 text-sm" 
-                   placeholder="Header Key (如 Authorization)" 
-                   value="${escapeHtml(h.key)}"
+                   placeholder="Header Key" value="${escapeHtml(h.key)}"
                    onchange="updateGlobalHeader(${i}, 'key', this.value)">
             <input type="text" class="input-field flex-1 rounded-lg px-3 py-2 text-sm" 
-                   placeholder="Header Value (如 Bearer xxx)" 
-                   value="${escapeHtml(h.value)}"
+                   placeholder="Header Value" value="${escapeHtml(h.value)}"
                    onchange="updateGlobalHeader(${i}, 'value', this.value)">
             <button onclick="removeGlobalHeader(${i})" class="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900 rounded-lg">
                 <i class="fas fa-trash-alt"></i>
@@ -394,162 +732,111 @@ function renderGlobalHeadersInputs() {
     `).join('');
 }
 
-// Add a new global header row (添加新的请求头行)
 function addGlobalHeader() {
     globalHeaders.push({ key: '', value: '' });
     renderGlobalHeadersInputs();
 }
 
-// Update a global header (更新请求头)
 function updateGlobalHeader(index, field, value) {
     globalHeaders[index][field] = value;
 }
 
-// Remove a global header (删除请求头)
 function removeGlobalHeader(index) {
     globalHeaders.splice(index, 1);
     renderGlobalHeadersInputs();
 }
 
-// Save global headers (保存全局请求头)
 function saveGlobalHeaders() {
-    // Filter out empty headers
     globalHeaders = globalHeaders.filter(h => h.key || h.value);
-    
-    // Validate header keys (key 必须是 ASCII)
     const invalidKeys = globalHeaders.filter(h => h.key && !isValidHeaderKey(h.key));
     if (invalidKeys.length > 0) {
-        alert('Header Key 只能包含英文字符，不支持中文: ' + invalidKeys.map(h => h.key).join(', '));
+        showToast('Header Key 只能包含英文字符', 'error');
         return;
     }
-    
     saveGlobalHeadersToStorage();
     updateHeadersCount();
     closeGlobalHeadersModal();
-    
-    // Re-render if an API is selected
-    if (currentApi) {
-        renderGlobalHeaders();
-    }
+    if (currentApi) renderGlobalHeaders();
+    showToast('全局参数已保存');
 }
 
-// Clear all global headers (清空所有请求头)
 function clearGlobalHeaders() {
     globalHeaders = [];
     saveGlobalHeadersToStorage();
     updateHeadersCount();
     renderGlobalHeadersInputs();
-    
-    // Re-render if an API is selected
-    if (currentApi) {
-        renderGlobalHeaders();
-    }
+    if (currentApi) renderGlobalHeaders();
 }
 
-// Mask sensitive header values (遮蔽敏感值)
 function maskValue(key, value) {
     const sensitiveKeys = ['authorization', 'token', 'api-key', 'apikey', 'secret', 'password'];
     if (sensitiveKeys.some(k => key.toLowerCase().includes(k))) {
-        if (value.length > 10) {
-            return value.substring(0, 6) + '****' + value.substring(value.length - 4);
-        }
+        if (value.length > 10) return value.substring(0, 6) + '****' + value.substring(value.length - 4);
         return '****';
     }
     return value;
 }
 
-// Escape HTML to prevent XSS (转义 HTML)
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
-// Encode header value to ensure ASCII-safe (编码 header 值确保 ASCII 安全)
 function encodeHeaderValue(value) {
     if (!value) return value;
-    // 检查是否包含非 ASCII 字符
-    if (/[^\x00-\x7F]/.test(value)) {
-        // 对非 ASCII 字符进行 URI 编码
-        return encodeURIComponent(value);
-    }
+    if (/[^\x00-\x7F]/.test(value)) return encodeURIComponent(value);
     return value;
 }
 
-// Check if header key is valid ASCII (检查 header key 是否为有效 ASCII)
 function isValidHeaderKey(key) {
     return key && /^[\x21-\x7E]+$/.test(key);
 }
 
-// ==================== Token 自动提取功能 ====================
+// ==================== Token 自动提取 ====================
 
-// Load token extract rules from localStorage
 function loadTokenExtractRulesFromStorage() {
     try {
         const saved = localStorage.getItem('qingfeng_token_rules');
-        if (saved) {
-            tokenExtractRules = JSON.parse(saved);
-        }
+        if (saved) tokenExtractRules = JSON.parse(saved);
         updateTokenRulesCount();
-    } catch (e) {
-        console.log('Failed to load token rules from storage');
-    }
+    } catch (e) {}
 }
 
-// Save token extract rules to localStorage
 function saveTokenExtractRulesToStorage() {
     try {
         localStorage.setItem('qingfeng_token_rules', JSON.stringify(tokenExtractRules));
-    } catch (e) {
-        console.log('Failed to save token rules to storage');
-    }
+    } catch (e) {}
 }
 
-// Update token rules count badge
 function updateTokenRulesCount() {
     const count = tokenExtractRules.filter(r => r.enabled && r.jsonPath && r.headerKey).length;
     const badge = document.getElementById('token-rules-count');
     if (badge) {
-        if (count > 0) {
-            badge.textContent = count;
-            badge.classList.remove('hidden');
-        } else {
-            badge.classList.add('hidden');
-        }
+        badge.textContent = count;
+        badge.classList.toggle('hidden', count === 0);
     }
 }
 
-// Open token extract modal
 function openTokenExtractModal() {
     document.getElementById('token-extract-modal').classList.remove('hidden');
     renderTokenExtractRules();
 }
 
-// Close token extract modal
 function closeTokenExtractModal() {
     document.getElementById('token-extract-modal').classList.add('hidden');
 }
 
-// Render token extract rules in modal
 function renderTokenExtractRules() {
     const container = document.getElementById('token-rules-inputs');
-    
     if (tokenExtractRules.length === 0) {
-        tokenExtractRules.push({ 
-            enabled: true,
-            pathPattern: '',
-            jsonPath: '', 
-            headerKey: 'Authorization', 
-            prefix: 'Bearer ' 
-        });
+        tokenExtractRules.push({ enabled: true, pathPattern: '', jsonPath: '', headerKey: 'Authorization', prefix: 'Bearer ' });
     }
     
     container.innerHTML = tokenExtractRules.map((r, i) => `
         <div class="p-3 rounded-lg mb-2" style="background: var(--bg-tertiary)">
             <div class="flex items-center gap-2 mb-2">
-                <input type="checkbox" ${r.enabled ? 'checked' : ''} 
-                       onchange="updateTokenRule(${i}, 'enabled', this.checked)"
-                       class="w-4 h-4">
+                <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="updateTokenRule(${i}, 'enabled', this.checked)" class="w-4 h-4">
                 <span class="text-sm font-medium">规则 ${i + 1}</span>
                 <button onclick="removeTokenRule(${i})" class="ml-auto p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900 rounded">
                     <i class="fas fa-trash-alt text-xs"></i>
@@ -557,78 +844,57 @@ function renderTokenExtractRules() {
             </div>
             <div class="grid grid-cols-2 gap-2">
                 <div class="col-span-2">
-                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">接口路径 (留空匹配所有，支持 * 通配符，如 /users/login 或 */login)</label>
-                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" 
-                           placeholder="/users/login 或 */login" 
-                           value="${escapeHtml(r.pathPattern || '')}"
-                           onchange="updateTokenRule(${i}, 'pathPattern', this.value)">
+                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">接口路径 (支持 * 通配符)</label>
+                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" placeholder="*/login" 
+                           value="${escapeHtml(r.pathPattern || '')}" onchange="updateTokenRule(${i}, 'pathPattern', this.value)">
                 </div>
                 <div>
-                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">JSON 路径 (如 data.token)</label>
-                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" 
-                           placeholder="data.token" 
-                           value="${escapeHtml(r.jsonPath)}"
-                           onchange="updateTokenRule(${i}, 'jsonPath', this.value)">
+                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">JSON 路径</label>
+                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" placeholder="data.token" 
+                           value="${escapeHtml(r.jsonPath)}" onchange="updateTokenRule(${i}, 'jsonPath', this.value)">
                 </div>
                 <div>
                     <label class="block text-xs mb-1" style="color: var(--text-secondary)">Header Key</label>
-                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" 
-                           placeholder="Authorization" 
-                           value="${escapeHtml(r.headerKey)}"
-                           onchange="updateTokenRule(${i}, 'headerKey', this.value)">
+                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" placeholder="Authorization" 
+                           value="${escapeHtml(r.headerKey)}" onchange="updateTokenRule(${i}, 'headerKey', this.value)">
                 </div>
                 <div class="col-span-2">
-                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">前缀 (可选，如 "Bearer ")</label>
-                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" 
-                           placeholder="Bearer " 
-                           value="${escapeHtml(r.prefix || '')}"
-                           onchange="updateTokenRule(${i}, 'prefix', this.value)">
+                    <label class="block text-xs mb-1" style="color: var(--text-secondary)">前缀</label>
+                    <input type="text" class="input-field w-full rounded px-2 py-1 text-sm" placeholder="Bearer " 
+                           value="${escapeHtml(r.prefix || '')}" onchange="updateTokenRule(${i}, 'prefix', this.value)">
                 </div>
             </div>
         </div>
     `).join('');
 }
 
-// Add a new token rule
 function addTokenRule() {
-    tokenExtractRules.push({ 
-        enabled: true,
-        pathPattern: '',
-        jsonPath: '', 
-        headerKey: 'Authorization', 
-        prefix: 'Bearer ' 
-    });
+    tokenExtractRules.push({ enabled: true, pathPattern: '', jsonPath: '', headerKey: 'Authorization', prefix: 'Bearer ' });
     renderTokenExtractRules();
 }
 
-// Update a token rule
 function updateTokenRule(index, field, value) {
     tokenExtractRules[index][field] = value;
 }
 
-// Remove a token rule
 function removeTokenRule(index) {
     tokenExtractRules.splice(index, 1);
     renderTokenExtractRules();
 }
 
-// Save token rules
 function saveTokenRules() {
     tokenExtractRules = tokenExtractRules.filter(r => r.jsonPath || r.headerKey);
-    
-    // Validate header keys
     const invalidKeys = tokenExtractRules.filter(r => r.headerKey && !isValidHeaderKey(r.headerKey));
     if (invalidKeys.length > 0) {
-        alert('Header Key 只能包含英文字符');
+        showToast('Header Key 只能包含英文字符', 'error');
         return;
     }
-    
     saveTokenExtractRulesToStorage();
     updateTokenRulesCount();
     closeTokenExtractModal();
+    showToast('Token 规则已保存');
 }
 
-// Clear all token rules
 function clearTokenRules() {
     tokenExtractRules = [];
     saveTokenExtractRulesToStorage();
@@ -636,7 +902,6 @@ function clearTokenRules() {
     renderTokenExtractRules();
 }
 
-// Extract token from response based on rules (从响应中提取 token)
 function extractTokenFromResponse(responseData) {
     if (!currentApi) return;
     
@@ -644,43 +909,29 @@ function extractTokenFromResponse(responseData) {
     const enabledRules = tokenExtractRules.filter(r => r.enabled && r.jsonPath && r.headerKey);
     
     for (const rule of enabledRules) {
-        // 检查路径是否匹配
-        if (!matchPath(currentPath, rule.pathPattern)) {
-            continue;
-        }
+        if (!matchPath(currentPath, rule.pathPattern)) continue;
         
         try {
             const value = getValueByPath(responseData, rule.jsonPath);
             if (value && typeof value === 'string') {
                 const headerValue = (rule.prefix || '') + value;
-                
-                // 更新或添加到全局 headers
                 const existingIndex = globalHeaders.findIndex(h => h.key === rule.headerKey);
                 if (existingIndex >= 0) {
                     globalHeaders[existingIndex].value = headerValue;
                 } else {
                     globalHeaders.push({ key: rule.headerKey, value: headerValue });
                 }
-                
-                // 保存并更新 UI
                 saveGlobalHeadersToStorage();
                 updateHeadersCount();
-                
-                // 显示提示
-                showToast(`已自动提取 ${rule.headerKey}: ${maskValue(rule.headerKey, headerValue)}`);
-                
-                // 如果当前有选中的 API，更新显示
-                if (currentApi) {
-                    renderGlobalHeaders();
-                }
+                showToast(`已提取 ${rule.headerKey}`);
+                if (currentApi) renderGlobalHeaders();
             }
         } catch (e) {
-            console.log('Failed to extract token:', e);
+            console.log('Token extract failed:', e);
         }
     }
 }
 
-// Get value from object by dot-notation path (通过路径获取对象值)
 function getValueByPath(obj, path) {
     const keys = path.split('.');
     let value = obj;
@@ -691,60 +942,161 @@ function getValueByPath(obj, path) {
     return value;
 }
 
-// Match API path with pattern (匹配接口路径)
-// 支持: 精确匹配 "/users/login", 通配符 "*/login", "/users/*"
 function matchPath(apiPath, pattern) {
-    // 空 pattern 匹配所有
-    if (!pattern || pattern.trim() === '') {
-        return true;
-    }
-    
+    if (!pattern || pattern.trim() === '') return true;
     pattern = pattern.trim();
+    if (pattern === apiPath) return true;
     
-    // 精确匹配
-    if (pattern === apiPath) {
-        return true;
+    const regexPattern = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+    
+    return new RegExp(`^${regexPattern}$`).test(apiPath);
+}
+
+// Toast 通知
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white text-sm z-50 flex items-center gap-2 animate-fade-in';
+    toast.style.background = type === 'error' ? '#ef4444' : '#22c55e';
+    toast.innerHTML = `<i class="fas fa-${type === 'error' ? 'times' : 'check'}-circle"></i>${escapeHtml(message)}`;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+// 复制响应结果
+function copyResponse() {
+    const responseEl = document.getElementById('response-content');
+    const text = responseEl.textContent || responseEl.innerText;
+    
+    if (!text || text === '点击"发送请求"查看响应结果') {
+        showToast('暂无响应内容', 'error');
+        return;
     }
     
-    // 通配符匹配: 将 * 转换为正则
-    const regexPattern = pattern
-        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')  // 转义特殊字符
-        .replace(/\*/g, '.*');  // * 转为 .*
-    
-    const regex = new RegExp(`^${regexPattern}$`);
-    return regex.test(apiPath);
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('已复制到剪贴板');
+    }).catch(() => {
+        // 降级方案
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showToast('已复制到剪贴板');
+    });
 }
 
-// Show toast notification (显示提示)
-function showToast(message) {
-    // 创建 toast 元素
-    const toast = document.createElement('div');
-    toast.className = 'fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white text-sm z-50';
-    toast.style.background = '#22c55e';
-    toast.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(message)}`;
-    document.body.appendChild(toast);
+// 复制 cURL 命令
+function copyCurl() {
+    if (!currentApi) {
+        showToast('请先选择接口', 'error');
+        return;
+    }
     
-    // 3秒后移除
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
+    const { path, method } = currentApi;
+    // 使用环境配置的 baseUrl，如果是相对路径则加上当前域名
+    let baseUrl = getCurrentBaseUrl();
+    if (!baseUrl.startsWith('http')) {
+        baseUrl = window.location.origin + baseUrl;
+    }
+    let url = baseUrl + path;
+    
+    const queryParams = new URLSearchParams();
+    const headers = {};
+    
+    // 收集全局 headers
+    globalHeaders.forEach(h => {
+        if (h.key && h.value) headers[h.key] = h.value;
+    });
+    
+    // 收集参数
+    document.querySelectorAll('#debug-params-container input').forEach(input => {
+        const name = input.dataset.param;
+        const location = input.dataset.in;
+        const value = input.value;
+        
+        if (!value) return;
+        
+        if (location === 'path') {
+            url = url.replace(`{${name}}`, encodeURIComponent(value));
+        } else if (location === 'query') {
+            queryParams.append(name, value);
+        } else if (location === 'header') {
+            headers[name] = value;
+        }
+    });
+    
+    if (queryParams.toString()) url += '?' + queryParams.toString();
+    
+    // 构建 cURL 命令
+    let curl = `curl -X ${method.toUpperCase()} '${url}'`;
+    
+    // 添加 headers
+    for (const [key, value] of Object.entries(headers)) {
+        curl += ` \\\n  -H '${key}: ${value}'`;
+    }
+    
+    // 添加 body
+    const bodyInput = document.getElementById('debug-body');
+    if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
+        curl += ` \\\n  -H 'Content-Type: application/json'`;
+        curl += ` \\\n  -d '${bodyInput.value.replace(/'/g, "\\'")}'`;
+    }
+    
+    navigator.clipboard.writeText(curl).then(() => {
+        showToast('cURL 命令已复制');
+    }).catch(() => {
+        showToast('复制失败', 'error');
+    });
 }
 
-// Send request
+// ==================== 发送请求 ====================
+
+let isRequesting = false;
+let lastResponseJson = null;
+let lastResponseHeaders = null;
+let isResponseFormatted = true;
+let isResponseExpanded = false;
+
 async function sendRequest() {
-    if (!currentApi) return;
+    if (!currentApi || isRequesting) return;
     
     const { path, method, api } = currentApi;
-    let url = (swaggerData.basePath || '') + path;
     
-    // Collect parameters
+    // 必填参数校验
+    const missingParams = [];
+    document.querySelectorAll('#debug-params-container input').forEach(input => {
+        const name = input.dataset.param;
+        const required = api.parameters?.find(p => p.name === name)?.required;
+        if (required && !input.value.trim()) {
+            missingParams.push(name);
+            input.style.borderColor = '#ef4444';
+        } else {
+            input.style.borderColor = '';
+        }
+    });
+    
+    if (missingParams.length > 0) {
+        showToast(`请填写必填参数: ${missingParams.join(', ')}`, 'error');
+        return;
+    }
+    
+    // 使用环境配置的 baseUrl
+    let url = getCurrentBaseUrl() + path;
+    
     const queryParams = new URLSearchParams();
     const headers = { 'Content-Type': 'application/json' };
     
-    // Apply user-defined global headers (应用用户自定义的全局请求头)
     globalHeaders.forEach(h => {
         if (h.key && h.value && isValidHeaderKey(h.key)) {
-            // 确保 header 值只包含 ASCII 字符，非 ASCII 字符进行编码
             headers[h.key] = encodeHeaderValue(h.value);
         }
     });
@@ -765,23 +1117,20 @@ async function sendRequest() {
         }
     });
     
-    if (queryParams.toString()) {
-        url += '?' + queryParams.toString();
-    }
+    if (queryParams.toString()) url += '?' + queryParams.toString();
     
-    // Get body
     let body = null;
     const bodyInput = document.getElementById('debug-body');
     if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
-        try {
-            body = bodyInput.value;
-        } catch (e) {
-            alert('请求体 JSON 格式错误');
-            return;
-        }
+        body = bodyInput.value;
     }
     
-    // Send request
+    // 禁用按钮，显示加载状态
+    setRequestLoading(true);
+    
+    const responseContent = document.getElementById('response-content');
+    responseContent.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>请求中...';
+    
     const startTime = Date.now();
     try {
         const res = await fetch(url, {
@@ -792,113 +1141,196 @@ async function sendRequest() {
         
         const duration = Date.now() - startTime;
         const data = await res.text();
+        const size = new Blob([data]).size;
         
-        // Update response
+        // 保存响应头
+        lastResponseHeaders = {};
+        res.headers.forEach((value, key) => {
+            lastResponseHeaders[key] = value;
+        });
+        
         document.getElementById('response-info').classList.remove('hidden');
         document.getElementById('response-status').textContent = res.status;
         document.getElementById('response-status').className = `px-3 py-1 rounded text-white text-sm font-bold ${res.ok ? 'bg-green-500' : 'bg-red-500'}`;
         document.getElementById('response-time').textContent = `${duration}ms`;
+        document.getElementById('response-size').textContent = formatSize(size);
         
         try {
-            const jsonData = JSON.parse(data);
-            document.getElementById('response-content').textContent = JSON.stringify(jsonData, null, 2);
-            
-            // 尝试自动提取 token (Try to auto-extract token)
-            if (res.ok) {
-                extractTokenFromResponse(jsonData);
-            }
+            lastResponseJson = JSON.parse(data);
+            isResponseFormatted = true;
+            const highlightedContent = syntaxHighlight(JSON.stringify(lastResponseJson, null, 2));
+            displayResponse(highlightedContent, size);
+            saveResponse(res.status, duration, highlightedContent, !res.ok);
+            if (res.ok) extractTokenFromResponse(lastResponseJson);
         } catch {
-            document.getElementById('response-content').textContent = data;
+            lastResponseJson = null;
+            responseContent.textContent = data;
+            saveResponse(res.status, duration, escapeHtml(data), !res.ok);
         }
     } catch (e) {
         document.getElementById('response-info').classList.remove('hidden');
         document.getElementById('response-status').textContent = 'Error';
         document.getElementById('response-status').className = 'px-3 py-1 rounded text-white text-sm font-bold bg-red-500';
         document.getElementById('response-time').textContent = '';
-        document.getElementById('response-content').textContent = e.message;
+        document.getElementById('response-size').textContent = '';
+        const errorContent = `<span class="text-red-500"><i class="fas fa-exclamation-circle mr-2"></i>${escapeHtml(e.message)}</span>`;
+        responseContent.innerHTML = errorContent;
+        saveResponse('Error', null, errorContent, true);
+        lastResponseJson = null;
+        lastResponseHeaders = null;
+    } finally {
+        setRequestLoading(false);
     }
 }
 
-// Toggle dark mode (切换深色模式)
+function setRequestLoading(loading) {
+    isRequesting = loading;
+    const btn = document.getElementById('send-btn');
+    if (btn) {
+        btn.disabled = loading;
+        btn.innerHTML = loading 
+            ? '<i class="fas fa-spinner fa-spin mr-2"></i>请求中...'
+            : '<i class="fas fa-paper-plane mr-2"></i>发送请求';
+        btn.style.opacity = loading ? '0.7' : '1';
+        btn.style.cursor = loading ? 'not-allowed' : 'pointer';
+    }
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function displayResponse(content, size) {
+    const responseContent = document.getElementById('response-content');
+    const expandBtn = document.getElementById('expand-response-btn');
+    const wrapper = document.getElementById('response-body-wrapper');
+    
+    // 大于 50KB 时折叠
+    if (size > 50 * 1024 && !isResponseExpanded) {
+        responseContent.innerHTML = content;
+        responseContent.style.maxHeight = '300px';
+        responseContent.style.overflow = 'hidden';
+        expandBtn?.classList.remove('hidden');
+    } else {
+        responseContent.innerHTML = content;
+        responseContent.style.maxHeight = '';
+        responseContent.style.overflow = '';
+        expandBtn?.classList.add('hidden');
+    }
+}
+
+function toggleResponseExpand() {
+    isResponseExpanded = !isResponseExpanded;
+    const responseContent = document.getElementById('response-content');
+    const expandBtn = document.getElementById('expand-response-btn');
+    
+    if (isResponseExpanded) {
+        responseContent.style.maxHeight = '';
+        responseContent.style.overflow = '';
+        expandBtn.innerHTML = '<i class="fas fa-chevron-up mr-1"></i>收起';
+    } else {
+        responseContent.style.maxHeight = '300px';
+        responseContent.style.overflow = 'hidden';
+        expandBtn.innerHTML = '<i class="fas fa-chevron-down mr-1"></i>展开全部';
+    }
+}
+
+function toggleResponseFormat() {
+    if (!lastResponseJson) {
+        showToast('无 JSON 响应可格式化', 'error');
+        return;
+    }
+    
+    isResponseFormatted = !isResponseFormatted;
+    const responseContent = document.getElementById('response-content');
+    const formatBtn = document.getElementById('format-btn');
+    
+    if (isResponseFormatted) {
+        responseContent.innerHTML = syntaxHighlight(JSON.stringify(lastResponseJson, null, 2));
+        formatBtn.innerHTML = '<i class="fas fa-compress-alt"></i>';
+        formatBtn.title = '压缩';
+    } else {
+        responseContent.innerHTML = syntaxHighlight(JSON.stringify(lastResponseJson));
+        formatBtn.innerHTML = '<i class="fas fa-expand-alt"></i>';
+        formatBtn.title = '格式化';
+    }
+}
+
+function toggleResponseHeaders() {
+    const panel = document.getElementById('response-headers-panel');
+    const content = document.getElementById('response-headers-content');
+    
+    if (!lastResponseHeaders) {
+        showToast('暂无响应头', 'error');
+        return;
+    }
+    
+    if (panel.classList.contains('hidden')) {
+        content.innerHTML = Object.entries(lastResponseHeaders)
+            .map(([k, v]) => `<div><span class="text-blue-500">${escapeHtml(k)}:</span> ${escapeHtml(v)}</div>`)
+            .join('');
+        panel.classList.remove('hidden');
+    } else {
+        panel.classList.add('hidden');
+    }
+}
+
+// ==================== 主题切换 ====================
+
 function toggleDarkMode() {
     isDarkMode = !isDarkMode;
     applyTheme();
     saveThemeToStorage();
 }
 
-// Legacy function name for compatibility
 function toggleTheme() {
     toggleDarkMode();
 }
 
-// ==================== 主题色切换功能 ====================
-
-// Load theme from localStorage (从本地存储加载主题)
 function loadThemeFromStorage() {
     try {
         const savedDarkMode = localStorage.getItem('qingfeng_dark_mode');
         const savedThemeColor = localStorage.getItem('qingfeng_theme_color');
         
-        if (savedDarkMode !== null) {
-            isDarkMode = savedDarkMode === 'true';
-        }
-        if (savedThemeColor) {
-            currentThemeColor = savedThemeColor;
-        }
+        if (savedDarkMode !== null) isDarkMode = savedDarkMode === 'true';
+        if (savedThemeColor) currentThemeColor = savedThemeColor;
         applyTheme();
-    } catch (e) {
-        console.log('Failed to load theme from storage');
-    }
+    } catch (e) {}
 }
 
-// Save theme to localStorage (保存主题到本地存储)
 function saveThemeToStorage() {
     try {
         localStorage.setItem('qingfeng_dark_mode', isDarkMode);
         localStorage.setItem('qingfeng_theme_color', currentThemeColor);
-    } catch (e) {
-        console.log('Failed to save theme to storage');
-    }
+    } catch (e) {}
 }
 
-// Apply current theme (应用当前主题)
 function applyTheme() {
-    // 设置深色/浅色模式
     const modeClass = isDarkMode ? 'dark' : 'light';
     const themeClass = `theme-${currentThemeColor}`;
     document.body.className = `${modeClass} ${themeClass}`;
-    
-    // 更新图标
     document.getElementById('theme-icon').className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
-    
-    // 更新主题选择器中的选中状态
     updateThemeButtonStates();
 }
 
-// Update theme button states (更新主题按钮状态)
 function updateThemeButtonStates() {
     document.querySelectorAll('.theme-btn').forEach(btn => {
         const theme = btn.dataset.theme;
-        if (theme === currentThemeColor) {
-            btn.style.borderColor = 'var(--primary)';
-        } else {
-            btn.style.borderColor = 'transparent';
-        }
+        btn.style.borderColor = theme === currentThemeColor ? 'var(--primary)' : 'transparent';
     });
 }
 
-// Open theme modal (打开主题选择弹窗)
 function openThemeModal() {
     document.getElementById('theme-modal').classList.remove('hidden');
     updateThemeButtonStates();
 }
 
-// Close theme modal (关闭主题选择弹窗)
 function closeThemeModal() {
     document.getElementById('theme-modal').classList.add('hidden');
 }
 
-// Set theme color (设置主题色)
 function setThemeColor(color) {
     currentThemeColor = color;
     applyTheme();
@@ -906,47 +1338,50 @@ function setThemeColor(color) {
     closeThemeModal();
 }
 
-// ==================== UI 风格切换功能 ====================
+// ==================== UI 风格切换 ====================
 
-// Open UI theme modal (打开 UI 风格选择弹窗)
+function loadUIThemeFromStorage() {
+    try {
+        const savedUITheme = localStorage.getItem('qingfeng_ui_theme');
+        if (savedUITheme && savedUITheme !== getCurrentUITheme()) {
+            // 如果保存的主题和当前不一致，跳转
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('theme', savedUITheme);
+            window.location.href = currentUrl.toString();
+        }
+    } catch (e) {}
+}
+
 function openUIThemeModal() {
     document.getElementById('ui-theme-modal').classList.remove('hidden');
     updateUIThemeButtonStates();
 }
 
-// Close UI theme modal (关闭 UI 风格选择弹窗)
 function closeUIThemeModal() {
     document.getElementById('ui-theme-modal').classList.add('hidden');
 }
 
-// Update UI theme button states (更新 UI 风格按钮状态)
 function updateUIThemeButtonStates() {
     const currentUITheme = getCurrentUITheme();
     document.querySelectorAll('.ui-theme-btn').forEach(btn => {
         const theme = btn.dataset.uiTheme;
-        if (theme === currentUITheme) {
-            btn.style.borderColor = 'var(--primary)';
-        } else {
-            btn.style.borderColor = 'var(--border)';
-        }
+        btn.style.borderColor = theme === currentUITheme ? 'var(--primary)' : 'var(--border)';
     });
 }
 
-// Get current UI theme from URL (从 URL 获取当前 UI 风格)
 function getCurrentUITheme() {
     const params = new URLSearchParams(window.location.search);
     return params.get('theme') || 'default';
 }
 
-// Switch UI theme (切换 UI 风格)
 function switchUITheme(theme) {
-    // 保存当前的设置到 localStorage，以便在新主题中恢复
+    // 保存到 localStorage
+    localStorage.setItem('qingfeng_ui_theme', theme);
     const currentUrl = new URL(window.location.href);
     currentUrl.searchParams.set('theme', theme);
     window.location.href = currentUrl.toString();
 }
 
-// Export documentation
 function exportDoc() {
     if (!swaggerData) return;
     
@@ -957,4 +1392,68 @@ function exportDoc() {
     a.download = 'swagger.json';
     a.click();
     URL.revokeObjectURL(url);
+    showToast('导出成功');
 }
+
+
+// ==================== 移动端侧边栏 ====================
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const isOpen = sidebar.classList.contains('open');
+    
+    if (isOpen) {
+        sidebar.classList.remove('open');
+        overlay.classList.add('hidden');
+        document.body.style.overflow = '';
+    } else {
+        sidebar.classList.add('open');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// 更新移动端标题
+function updateMobileTitle(title) {
+    const mobileTitle = document.getElementById('mobile-title');
+    if (mobileTitle) mobileTitle.textContent = title || 'API Docs';
+}
+
+// 同步移动端主题图标
+function syncMobileThemeIcon() {
+    const mobileIcon = document.getElementById('mobile-theme-icon');
+    if (mobileIcon) mobileIcon.className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
+}
+
+// 重写 selectApi 以支持移动端
+const originalSelectApi = selectApi;
+selectApi = function(path, method) {
+    originalSelectApi(path, method);
+    // 移动端自动关闭侧边栏
+    if (window.innerWidth <= 768) {
+        toggleSidebar();
+    }
+    // 更新移动端标题
+    const api = swaggerData.paths[path][method];
+    updateMobileTitle(api.summary || path);
+};
+
+// 重写 applyTheme 以同步移动端图标
+const originalApplyTheme = applyTheme;
+applyTheme = function() {
+    originalApplyTheme();
+    syncMobileThemeIcon();
+};
+
+// 重写 updateHeadersCount 以同步移动端徽章
+const originalUpdateHeadersCount = updateHeadersCount;
+updateHeadersCount = function() {
+    originalUpdateHeadersCount();
+    const count = globalHeaders.filter(h => h.key && h.value).length;
+    const mobileBadge = document.getElementById('mobile-headers-count');
+    if (mobileBadge) {
+        mobileBadge.textContent = count;
+        mobileBadge.classList.toggle('hidden', count === 0);
+    }
+};

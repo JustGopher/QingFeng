@@ -15,6 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Version is the current version of QingFeng
+const Version = "1.3.0"
+
 //go:embed ui/default/* ui/minimal/* ui/modern/*
 var uiFS embed.FS
 
@@ -38,6 +41,15 @@ type Header struct {
 	Key string `json:"key"`
 	// Value is the header value (e.g., "Bearer xxx", "your-api-key")
 	Value string `json:"value"`
+}
+
+// Environment represents a deployment environment configuration
+// 环境配置
+type Environment struct {
+	// Name is the display name (e.g., "开发环境", "Production")
+	Name string `json:"name"`
+	// BaseURL is the API base URL for this environment
+	BaseURL string `json:"baseUrl"`
 }
 
 // Config holds the configuration for knife4j UI
@@ -71,6 +83,13 @@ type Config struct {
 	SwagOutputDir string
 	// UITheme selects the UI theme: "default", "minimal", "modern" (UI 主题选择)
 	UITheme UITheme
+	// Logo is the URL or base64 of custom logo image (自定义 Logo)
+	Logo string
+	// LogoLink is the URL to navigate when clicking the logo (Logo 点击跳转链接)
+	LogoLink string
+	// Environments is a list of environment configurations for switching baseUrl
+	// 环境配置列表，用于切换不同环境的 baseUrl
+	Environments []Environment
 }
 
 // DefaultConfig returns a default configuration
@@ -127,6 +146,10 @@ func Handler(cfg Config) gin.HandlerFunc {
 		"globalHeaders": cfg.GlobalHeaders,
 		"defaultTheme":  defaultTheme,
 		"themes":        []string{"default", "minimal", "modern"},
+		"qingfengVersion": Version,
+		"logo":          cfg.Logo,
+		"logoLink":      cfg.LogoLink,
+		"environments":  cfg.Environments,
 	})
 
 	return func(c *gin.Context) {

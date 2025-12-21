@@ -23,19 +23,26 @@
 ### 在线调试
 ![在线调试](./screenshots/debug.png)
 
+### 移动端
+| 浅色模式 | 深色模式 |
+|:--------:|:--------:|
+| ![移动端浅色](./screenshots/mobile-light.png) | ![移动端深色](./screenshots/mobile-dark.png) |
+
 ## ✨ 特性
 
 - 🎨 **多主题支持** - 提供 Default、Minimal、Modern 三种 UI 风格
 - 🌓 **深色/浅色模式** - 支持主题切换，保护眼睛
 - 🎯 **多种主题色** - 蓝、绿、紫、橙、红、青六种主题色可选
-- 🔍 **快速搜索** - 实时搜索接口，快速定位
+- 🔍 **快速搜索** - 实时搜索接口，快速定位（支持 Ctrl+K 快捷键）
 - 🐛 **在线调试** - 内置 API 调试工具，类似 Postman
 - 🔑 **全局请求头** - 支持配置全局 Headers（如 Authorization）
 - 🪄 **Token 自动提取** - 从响应中自动提取 Token 设置到全局参数
 - 🔄 **自动生成文档** - 启动时自动运行 swag init
 - 📦 **零依赖前端** - 使用 embed.FS 内嵌，无需额外部署
 - 🚀 **简单集成** - 一行代码接入现有项目
-- 📱 **响应式设计** - 支持移动端访问
+- 📱 **移动端适配** - 完美支持手机访问，侧边栏抽屉式交互
+- 💾 **设置持久化** - 主题、UI 风格、全局参数自动保存到本地
+- ✨ **JSON 语法高亮** - 响应结果彩色高亮显示
 
 ## 🔄 无侵入替换
 
@@ -226,6 +233,18 @@ func main() {
 
 也可以通过 URL 参数切换主题：`http://localhost:8080/doc/?theme=modern`
 
+切换后的主题会自动保存到浏览器本地存储，下次访问自动恢复。
+
+## 📱 移动端支持
+
+青峰Swag 完美适配移动端：
+
+- 📲 **抽屉式侧边栏** - 点击左上角菜单按钮打开接口列表
+- 🎯 **顶部操作栏** - Headers、Token、主题等功能一键访问
+- 💾 **设置同步** - 主题和参数设置在移动端和桌面端同步
+- 🌓 **深色模式** - 右上角一键切换，保护眼睛
+
+
 ## ⚙️ 配置项
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -243,6 +262,47 @@ func main() {
 | AutoGenerate | bool | false | 启动时自动运行 swag init |
 | SwagSearchDir | string | "." | swag 搜索目录 |
 | SwagOutputDir | string | "./docs" | swagger 文件输出目录 |
+| Logo | string | "" | 自定义 Logo URL 或 base64 |
+| LogoLink | string | "" | Logo 点击跳转链接 |
+| Environments | []Environment | nil | 多环境配置 |
+
+## 🌍 多环境配置
+
+支持配置多个环境，方便在开发、测试、生产环境间切换：
+
+```go
+r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
+    Title:    "我的 API",
+    BasePath: "/doc",
+    DocPath:  "./docs/swagger.json",
+    Environments: []qingfeng.Environment{
+        {Name: "本地开发", BaseURL: "http://localhost:8080/api/v1"},
+        {Name: "测试环境", BaseURL: "https://test-api.example.com/api/v1"},
+        {Name: "生产环境", BaseURL: "https://api.example.com/api/v1"},
+    },
+}))
+```
+
+## 🎨 自定义 Logo
+
+支持配置自定义 Logo：
+
+```go
+r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
+    Title:    "我的 API",
+    BasePath: "/doc",
+    DocPath:  "./docs/swagger.json",
+    Logo:     "https://example.com/logo.png", // 或 base64
+    LogoLink: "https://example.com",          // 点击跳转
+}))
+```
+
+## ⌨️ 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl/Cmd + K` | 聚焦搜索框 |
+| `Escape` | 关闭弹窗 |
 
 ## 🔑 全局请求头
 

@@ -69,12 +69,60 @@
         pre code { font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
         .scrollbar-thin::-webkit-scrollbar { width: 4px; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        
+        @media (max-width: 768px) {
+            #sidebar { 
+                position: fixed; 
+                z-index: 45; 
+                transform: translateX(-100%); 
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                height: 100vh;
+                width: 85%;
+                max-width: 280px;
+            }
+            #sidebar.open { transform: translateX(0); }
+            
+            .mobile-header {
+                display: flex !important;
+                position: sticky;
+                top: 0;
+                z-index: 30;
+                background: var(--bg-primary);
+                border-bottom: 1px solid var(--border);
+                padding: 10px 12px;
+                align-items: center;
+                gap: 10px;
+            }
+            .desktop-header { display: none !important; }
+            .card { margin: 6px !important; }
+            
+            .mobile-actions { 
+                display: flex !important; 
+                gap: 6px; 
+                padding: 6px 10px;
+                overflow-x: auto;
+                background: var(--bg-primary);
+                border-bottom: 1px solid var(--border);
+            }
+            .mobile-actions button {
+                flex-shrink: 0;
+                padding: 6px 10px;
+                font-size: 12px;
+                border-radius: 6px;
+            }
+        }
+        @media (min-width: 769px) {
+            #sidebar-overlay, .mobile-header, .mobile-actions { display: none !important; }
+        }
     </style>
 </head>
 <body class="light theme-blue">
+    <!-- 移动端遮罩 -->
+    <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/50 z-40 hidden"></div>
+    
     <div id="app" class="flex h-screen">
         <!-- Minimal Sidebar -->
-        <aside class="sidebar w-72 flex flex-col h-full">
+        <aside id="sidebar" class="sidebar w-72 flex flex-col h-full">
             <div class="p-4 border-b" style="border-color: var(--border)">
                 <div class="flex items-center justify-between mb-3">
                     <span id="doc-title" class="font-semibold">API Docs</span>
@@ -90,20 +138,47 @@
                         </button>
                     </div>
                 </div>
-                <input type="text" id="search-input" placeholder="搜索..." 
+                <input type="text" id="search-input" placeholder="搜索... (⌘K)" 
                     class="input-field w-full px-3 py-1.5 rounded text-sm">
             </div>
             <div class="flex-1 overflow-y-auto scrollbar-thin p-2" id="api-list">
                 <div class="text-center py-8 text-gray-400 text-sm">加载中...</div>
             </div>
             <div class="p-2 text-xs text-center" style="color: var(--text-secondary)">
-            Powered by <a href="https://github.com/delfDog/QingFeng" class="font-medium hover:underline" style="color: var(--primary)">wdc</a> · Modern
+            Powered by <a href="https://github.com/delfDog/QingFeng" class="font-medium hover:underline" style="color: var(--primary)">青峰</a> · <span id="version">v1.2.0</span>
             </div>
         </aside>
 
         <!-- Main -->
         <main class="flex-1 flex flex-col overflow-hidden" style="background: var(--bg-secondary)">
-            <header class="card m-3 mb-0 p-3 rounded-lg flex items-center justify-between">
+            <!-- 移动端顶部栏 -->
+            <div class="mobile-header" style="display: none;">
+                <button onclick="toggleSidebar()" class="p-1.5 -ml-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <i class="fas fa-bars" style="color: var(--primary)"></i>
+                </button>
+                <div class="flex-1 min-w-0">
+                    <span id="mobile-title" class="font-medium text-sm truncate block">API Docs</span>
+                </div>
+                <button onclick="toggleDarkMode()" class="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <i class="fas fa-moon text-sm" id="mobile-theme-icon"></i>
+                </button>
+            </div>
+            
+            <!-- 移动端操作栏 -->
+            <div class="mobile-actions" style="display: none;">
+                <button onclick="openGlobalHeadersModal()" class="border" style="border-color: var(--border)">
+                    <i class="fas fa-key mr-1" style="color: var(--primary)"></i>Headers
+                    <span id="mobile-headers-count" class="ml-1 px-1 text-xs rounded bg-blue-500 text-white hidden">0</span>
+                </button>
+                <button onclick="openTokenExtractModal()" class="border" style="border-color: var(--border)">
+                    <i class="fas fa-magic mr-1 text-green-500"></i>Token
+                </button>
+                <button onclick="openUIThemeModal()" class="border" style="border-color: var(--border)">
+                    <i class="fas fa-palette mr-1" style="color: var(--primary)"></i>主题
+                </button>
+            </div>
+            
+            <header class="desktop-header card m-3 mb-0 p-3 rounded-lg flex items-center justify-between">
                 <div id="current-api-info">
                     <span class="font-medium">选择接口</span>
                 </div>
@@ -161,7 +236,12 @@
                     </div>
 
                     <div id="debug-panel" class="card rounded-lg p-4">
-                        <h4 class="font-medium mb-3 text-sm">调试</h4>
+                        <h4 class="font-medium mb-3 text-sm flex items-center justify-between">
+                            <span>调试</span>
+                            <button onclick="copyCurl()" class="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)" title="cURL">
+                                <i class="fas fa-terminal mr-1"></i>cURL
+                            </button>
+                        </h4>
                         <div class="space-y-3">
                             <div id="global-headers-container" class="hidden">
                                 <div id="global-headers-list" class="rounded p-2 text-xs font-mono" style="background: var(--bg-tertiary)"></div>
@@ -170,19 +250,42 @@
                             <div id="debug-body-container" class="hidden">
                                 <textarea id="debug-body" rows="4" class="input-field w-full rounded p-2 font-mono text-sm"></textarea>
                             </div>
-                            <button onclick="sendRequest()" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">
+                            <button onclick="sendRequest()" id="send-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">
                                 发送请求
                             </button>
                         </div>
                     </div>
 
                     <div class="card rounded-lg p-4">
-                        <h4 class="font-medium mb-3 text-sm">响应</h4>
-                        <div id="response-info" class="mb-2 hidden">
+                        <h4 class="font-medium mb-3 text-sm flex items-center justify-between">
+                            <span>响应</span>
+                            <div class="flex items-center gap-1">
+                                <button onclick="toggleResponseFormat()" id="format-btn" class="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)" title="格式化">
+                                    <i class="fas fa-compress-alt"></i>
+                                </button>
+                                <button onclick="toggleResponseHeaders()" class="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)" title="响应头">
+                                    <i class="fas fa-info-circle"></i>
+                                </button>
+                                <button onclick="copyResponse()" class="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)" title="复制">
+                                    <i class="fas fa-copy mr-1"></i>复制
+                                </button>
+                            </div>
+                        </h4>
+                        <div id="response-info" class="mb-2 hidden flex items-center flex-wrap gap-2">
                             <span id="response-status" class="px-2 py-0.5 rounded text-white text-xs">200</span>
-                            <span id="response-time" class="ml-2 text-xs" style="color: var(--text-secondary)">0ms</span>
+                            <span id="response-time" class="text-xs" style="color: var(--text-secondary)">0ms</span>
+                            <span id="response-size" class="text-xs" style="color: var(--text-secondary)"></span>
                         </div>
-                        <pre class="response-panel rounded p-3 overflow-x-auto text-sm"><code id="response-content">点击发送请求</code></pre>
+                        <div id="response-headers-panel" class="hidden mb-2 p-2 rounded text-xs font-mono overflow-x-auto" style="background: var(--bg-tertiary)">
+                            <div class="font-medium mb-1" style="color: var(--text-secondary)">响应头</div>
+                            <div id="response-headers-content"></div>
+                        </div>
+                        <div id="response-body-wrapper">
+                            <pre class="response-panel rounded p-3 overflow-x-auto text-sm"><code id="response-content">点击发送请求</code></pre>
+                            <button id="expand-response-btn" onclick="toggleResponseExpand()" class="hidden w-full mt-2 py-1.5 text-xs rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)">
+                                <i class="fas fa-chevron-down mr-1"></i>展开全部
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
