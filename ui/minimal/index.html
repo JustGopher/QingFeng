@@ -235,6 +235,11 @@
                         <pre class="response-panel rounded p-3 overflow-x-auto text-sm"><code id="request-body-content"></code></pre>
                     </div>
 
+                    <div id="response-schema-section" class="card rounded-lg p-4 hidden">
+                        <h4 class="font-medium mb-3 text-sm">响应结构</h4>
+                        <div id="response-schema-container"></div>
+                    </div>
+
                     <div id="debug-panel" class="card rounded-lg p-4">
                         <h4 class="font-medium mb-3 text-sm flex items-center justify-between">
                             <span>调试</span>
@@ -248,7 +253,18 @@
                             </div>
                             <div id="debug-params-container"></div>
                             <div id="debug-body-container" class="hidden">
-                                <textarea id="debug-body" rows="4" class="input-field w-full rounded p-2 font-mono text-sm"></textarea>
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-sm font-medium">请求体</label>
+                                    <button onclick="toggleBodyEditMode()" id="body-mode-btn" class="text-xs px-2 py-1 rounded border hover:bg-gray-50 dark:hover:bg-gray-800" style="border-color: var(--border)">
+                                        <i class="fas fa-edit mr-1"></i>JSON
+                                    </button>
+                                </div>
+                                <div id="body-form-mode">
+                                    <div id="body-fields-container" class="space-y-2"></div>
+                                </div>
+                                <div id="body-json-mode" class="hidden">
+                                    <textarea id="debug-body" rows="4" class="input-field w-full rounded p-2 font-mono text-sm"></textarea>
+                                </div>
                             </div>
                             <button onclick="sendRequest()" id="send-btn" class="btn-primary px-4 py-1.5 rounded text-sm font-medium">
                                 发送请求

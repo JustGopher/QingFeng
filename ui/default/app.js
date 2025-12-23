@@ -317,6 +317,7 @@ function selectApi(path, method) {
     
     renderParameters(api);
     renderRequestBody(api);
+    renderResponseSchema(api);
     renderDebugPanel(api, path);
     
     // 恢复保存的响应结果
@@ -399,6 +400,180 @@ function renderRequestBody(api) {
     }
 }
 
+// ==================== 响应结构展示 ====================
+
+function renderResponseSchema(api) {
+    const section = document.getElementById('response-schema-section');
+    const container = document.getElementById('response-schema-container');
+    
+    if (!api.responses) {
+        section.classList.add('hidden');
+        return;
+    }
+    
+    let html = '';
+    
+    for (const [code, response] of Object.entries(api.responses)) {
+        const schema = response.schema;
+        const description = response.description || '';
+        
+        html += `
+            <div class="mb-4 last:mb-0">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="px-2 py-1 rounded text-white text-xs font-bold ${code.startsWith('2') ? 'bg-green-500' : code.startsWith('4') ? 'bg-yellow-500' : 'bg-red-500'}">${code}</span>
+                    <span class="text-sm" style="color: var(--text-secondary)">${escapeHtml(description)}</span>
+                </div>
+                <div class="flex gap-2 mb-3">
+                    <button onclick="switchSchemaView(this, 'example', '${code}')" class="schema-tab schema-tab-${code} px-3 py-1 text-sm rounded-lg" style="background: var(--primary); color: white">Example Value</button>
+                    <button onclick="switchSchemaView(this, 'model', '${code}')" class="schema-tab schema-tab-${code} px-3 py-1 text-sm rounded-lg border" style="border-color: var(--border)">Model</button>
+                </div>
+                <div id="schema-example-${code}" class="schema-content schema-content-${code}">
+                    <pre class="response-panel rounded-lg p-4 overflow-x-auto text-sm"><code>${schema ? syntaxHighlight(JSON.stringify(generateExample(schema), null, 2)) : '// 无响应体'}</code></pre>
+                </div>
+                <div id="schema-model-${code}" class="schema-content schema-content-${code} hidden">
+                    <div class="rounded-lg p-4 text-sm overflow-x-auto" style="background: var(--bg-tertiary)">
+                        ${schema ? renderSchemaModel(schema) : '<span style="color: var(--text-secondary)">无响应体结构</span>'}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    container.innerHTML = html;
+    section.classList.remove('hidden');
+}
+
+function switchSchemaView(btn, view, code) {
+    // 更新按钮样式
+    document.querySelectorAll(`.schema-tab-${code}`).forEach(tab => {
+        tab.style.background = '';
+        tab.style.color = '';
+        tab.style.borderColor = 'var(--border)';
+    });
+    btn.style.background = 'var(--primary)';
+    btn.style.color = 'white';
+    btn.style.borderColor = 'var(--primary)';
+    
+    // 切换内容
+    document.querySelectorAll(`.schema-content-${code}`).forEach(content => {
+        content.classList.add('hidden');
+    });
+    document.getElementById(`schema-${view}-${code}`).classList.remove('hidden');
+}
+
+function renderSchemaModel(schema, depth = 0, parentKey = '') {
+    if (depth > 10) return '<span style="color: var(--text-secondary)">...</span>';
+    
+    // 处理 $ref
+    if (schema.$ref) {
+        const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
+        const refSchema = swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath];
+        if (refSchema) {
+            return renderSchemaModel(refSchema, depth, parentKey);
+        }
+        return `<span class="text-purple-500">${escapeHtml(refPath)}</span>`;
+    }
+    
+    // 处理 allOf
+    if (schema.allOf) {
+        let merged = { type: 'object', properties: {} };
+        for (const subSchema of schema.allOf) {
+            const resolved = resolveSchema(subSchema);
+            if (resolved.properties) {
+                merged.properties = { ...merged.properties, ...resolved.properties };
+            }
+        }
+        return renderSchemaModel(merged, depth, parentKey);
+    }
+    
+    // 处理数组
+    if (schema.type === 'array' && schema.items) {
+        return `<div class="flex items-start gap-2">
+            <span class="text-orange-500">[</span>
+            <div class="flex-1">${renderSchemaModel(schema.items, depth + 1, parentKey)}</div>
+            <span class="text-orange-500">]</span>
+        </div>`;
+    }
+    
+    // 处理对象
+    if (schema.type === 'object' || schema.properties) {
+        const properties = schema.properties || {};
+        const required = schema.required || [];
+        
+        if (Object.keys(properties).length === 0) {
+            return '<span style="color: var(--text-secondary)">object</span>';
+        }
+        
+        let html = '<div class="schema-tree">';
+        const indent = depth > 0 ? 'ml-4 pl-4 border-l' : '';
+        html += `<div class="${indent}" style="border-color: var(--border)">`;
+        
+        for (const [key, prop] of Object.entries(properties)) {
+            const isRequired = required.includes(key);
+            const propType = getSchemaType(prop);
+            const description = prop.description || '';
+            const example = prop.example !== undefined ? prop.example : '';
+            
+            html += `
+                <div class="py-2 flex items-start gap-3" style="border-bottom: 1px solid var(--border)">
+                    <div class="flex-shrink-0 min-w-[120px]">
+                        <span class="text-blue-500 font-mono">${escapeHtml(key)}</span>
+                        ${isRequired ? '<span class="text-red-500 ml-1">*</span>' : ''}
+                    </div>
+                    <div class="flex-shrink-0 min-w-[80px]">
+                        <span class="text-purple-500 text-xs">${escapeHtml(propType)}</span>
+                    </div>
+                    <div class="flex-1" style="color: var(--text-secondary)">
+                        ${description ? `<span>${escapeHtml(description)}</span>` : ''}
+                        ${example !== '' ? `<span class="text-xs ml-2" style="color: var(--text-secondary)">示例: ${escapeHtml(String(example))}</span>` : ''}
+                    </div>
+                </div>
+            `;
+            
+            // 递归渲染嵌套对象
+            if (prop.type === 'object' || prop.properties || prop.$ref) {
+                html += `<div class="ml-4">${renderSchemaModel(prop, depth + 1, key)}</div>`;
+            } else if (prop.type === 'array' && prop.items && (prop.items.type === 'object' || prop.items.properties || prop.items.$ref)) {
+                html += `<div class="ml-4 pl-2 border-l" style="border-color: var(--border)">
+                    <div class="text-xs py-1" style="color: var(--text-secondary)">数组元素:</div>
+                    ${renderSchemaModel(prop.items, depth + 1, key)}
+                </div>`;
+            }
+        }
+        
+        html += '</div></div>';
+        return html;
+    }
+    
+    // 基本类型
+    return `<span class="text-purple-500">${escapeHtml(schema.type || 'any')}</span>`;
+}
+
+function resolveSchema(schema) {
+    if (schema.$ref) {
+        const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
+        return swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath] || {};
+    }
+    return schema;
+}
+
+function getSchemaType(schema) {
+    if (schema.$ref) {
+        const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
+        return refPath.split('.').pop();
+    }
+    if (schema.type === 'array') {
+        if (schema.items) {
+            return `${getSchemaType(schema.items)}[]`;
+        }
+        return 'array';
+    }
+    if (schema.allOf) {
+        return 'object';
+    }
+    return schema.type || 'object';
+}
+
 function generateExample(schema, depth = 0) {
     if (depth > 5) return {};
     
@@ -407,6 +582,18 @@ function generateExample(schema, depth = 0) {
         const refSchema = swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath];
         if (refSchema) return generateExample(refSchema, depth + 1);
         return {};
+    }
+    
+    // 处理 allOf - 合并所有子 schema
+    if (schema.allOf) {
+        let merged = {};
+        for (const subSchema of schema.allOf) {
+            const subExample = generateExample(subSchema, depth + 1);
+            if (typeof subExample === 'object' && !Array.isArray(subExample)) {
+                merged = { ...merged, ...subExample };
+            }
+        }
+        return merged;
     }
     
     if (schema.example !== undefined) return schema.example;
@@ -491,19 +678,270 @@ function renderDebugPanel(api, path) {
         const bodyParam = params.find(p => p.in === 'body');
         const schema = api.requestBody?.content?.['application/json']?.schema || bodyParam?.schema;
         
-        // 优先使用保存的 body，否则生成示例
-        if (savedData.body) {
-            document.getElementById('debug-body').value = savedData.body;
-        } else if (schema) {
-            document.getElementById('debug-body').value = JSON.stringify(generateExample(schema), null, 2);
-        }
+        // 保存当前 schema 供后续使用
+        currentBodySchema = schema ? resolveSchemaFull(schema) : null;
         
-        // 监听 body 变化
+        // 渲染结构化表单
+        renderBodyFields(currentBodySchema, savedData.bodyFields || {});
+        
+        // 同步到 JSON 文本框
+        syncBodyToJson();
+        
+        // 监听 JSON 文本框变化
         document.getElementById('debug-body').oninput = function() {
             saveDebugBody(this.value);
         };
     } else {
         bodyContainer.classList.add('hidden');
+        currentBodySchema = null;
+    }
+}
+
+// 当前请求体的 schema
+let currentBodySchema = null;
+// 当前编辑模式: 'form' 或 'json'
+let bodyEditMode = 'form';
+
+// 完整解析 schema，包括 $ref 和 allOf
+function resolveSchemaFull(schema) {
+    if (!schema) return null;
+    
+    if (schema.$ref) {
+        const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
+        const refSchema = swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath];
+        if (refSchema) return resolveSchemaFull(refSchema);
+        return { type: 'object', properties: {} };
+    }
+    
+    if (schema.allOf) {
+        let merged = { type: 'object', properties: {}, required: [] };
+        for (const subSchema of schema.allOf) {
+            const resolved = resolveSchemaFull(subSchema);
+            if (resolved.properties) {
+                merged.properties = { ...merged.properties, ...resolved.properties };
+            }
+            if (resolved.required) {
+                merged.required = [...merged.required, ...resolved.required];
+            }
+        }
+        return merged;
+    }
+    
+    // 递归解析 properties 中的 $ref
+    if (schema.properties) {
+        const resolvedProps = {};
+        for (const [key, prop] of Object.entries(schema.properties)) {
+            resolvedProps[key] = resolveSchemaFull(prop);
+        }
+        return { ...schema, properties: resolvedProps };
+    }
+    
+    // 解析数组的 items
+    if (schema.type === 'array' && schema.items) {
+        return { ...schema, items: resolveSchemaFull(schema.items) };
+    }
+    
+    return schema;
+}
+
+// 渲染请求体字段表单
+function renderBodyFields(schema, savedValues) {
+    const container = document.getElementById('body-fields-container');
+    if (!schema || !schema.properties) {
+        container.innerHTML = '<p class="text-sm" style="color: var(--text-secondary)">无结构化字段</p>';
+        return;
+    }
+    
+    const properties = schema.properties;
+    const required = schema.required || [];
+    
+    let html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
+    html += `<thead><tr style="border-bottom: 1px solid var(--border)">
+        <th class="text-left py-2 px-2 font-medium">字段名</th>
+        <th class="text-left py-2 px-2 font-medium">类型</th>
+        <th class="text-left py-2 px-2 font-medium">必填</th>
+        <th class="text-left py-2 px-2 font-medium" style="min-width: 200px">值</th>
+        <th class="text-left py-2 px-2 font-medium">说明</th>
+    </tr></thead><tbody>`;
+    
+    for (const [key, prop] of Object.entries(properties)) {
+        const isRequired = required.includes(key);
+        const propType = prop.type || 'string';
+        const description = prop.description || '';
+        const example = prop.example;
+        const savedValue = savedValues[key] !== undefined ? savedValues[key] : (example !== undefined ? example : '');
+        
+        html += `<tr style="border-bottom: 1px solid var(--border)">
+            <td class="py-2 px-2">
+                <span class="font-mono text-blue-500">${escapeHtml(key)}</span>
+            </td>
+            <td class="py-2 px-2">
+                <span class="text-xs px-1.5 py-0.5 rounded" style="background: var(--bg-tertiary)">${escapeHtml(propType)}</span>
+            </td>
+            <td class="py-2 px-2">
+                ${isRequired ? '<span class="text-red-500 font-medium">*必填</span>' : '<span style="color: var(--text-secondary)">可选</span>'}
+            </td>
+            <td class="py-2 px-2">
+                ${renderBodyFieldInput(key, prop, savedValue)}
+            </td>
+            <td class="py-2 px-2" style="color: var(--text-secondary)">
+                ${escapeHtml(description)}
+                ${example !== undefined ? `<br><span class="text-xs">示例: ${escapeHtml(String(example))}</span>` : ''}
+            </td>
+        </tr>`;
+    }
+    
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+}
+
+// 渲染单个字段的输入控件
+function renderBodyFieldInput(key, prop, value) {
+    const type = prop.type || 'string';
+    const escapedValue = escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''));
+    
+    if (prop.enum) {
+        // 枚举类型用下拉框
+        const options = prop.enum.map(v => 
+            `<option value="${escapeHtml(v)}" ${v === value ? 'selected' : ''}>${escapeHtml(v)}</option>`
+        ).join('');
+        return `<select class="input-field w-full rounded px-2 py-1.5 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()">
+            <option value="">-- 请选择 --</option>${options}
+        </select>`;
+    }
+    
+    if (type === 'boolean') {
+        return `<select class="input-field w-full rounded px-2 py-1.5 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()">
+            <option value="">-- 请选择 --</option>
+            <option value="true" ${value === true || value === 'true' ? 'selected' : ''}>true</option>
+            <option value="false" ${value === false || value === 'false' ? 'selected' : ''}>false</option>
+        </select>`;
+    }
+    
+    if (type === 'integer' || type === 'number') {
+        return `<input type="number" class="input-field w-full rounded px-2 py-1.5 text-sm" 
+            data-body-field="${escapeHtml(key)}" data-type="${type}"
+            value="${escapedValue}" 
+            placeholder="${prop.description || key}"
+            oninput="onBodyFieldChange()">`;
+    }
+    
+    if (type === 'array' || type === 'object') {
+        return `<textarea class="input-field w-full rounded px-2 py-1.5 text-sm font-mono" rows="2"
+            data-body-field="${escapeHtml(key)}" data-type="${type}"
+            placeholder='${type === 'array' ? '["item1", "item2"]' : '{"key": "value"}'}'
+            oninput="onBodyFieldChange()">${escapedValue}</textarea>`;
+    }
+    
+    // 默认字符串输入
+    return `<input type="text" class="input-field w-full rounded px-2 py-1.5 text-sm" 
+        data-body-field="${escapeHtml(key)}" data-type="string"
+        value="${escapedValue}" 
+        placeholder="${prop.description || key}"
+        oninput="onBodyFieldChange()">`;
+}
+
+// 字段值变化时同步到 JSON
+function onBodyFieldChange() {
+    syncBodyToJson();
+    saveBodyFieldsData();
+}
+
+// 从表单同步到 JSON 文本框
+function syncBodyToJson() {
+    const bodyObj = getBodyFromFields();
+    const jsonStr = JSON.stringify(bodyObj, null, 2);
+    document.getElementById('debug-body').value = jsonStr;
+    saveDebugBody(jsonStr);
+}
+
+// 从表单字段获取请求体对象
+function getBodyFromFields() {
+    const obj = {};
+    document.querySelectorAll('[data-body-field]').forEach(el => {
+        const key = el.dataset.bodyField;
+        const type = el.dataset.type || 'string';
+        let value = el.value;
+        
+        if (value === '') return; // 跳过空值
+        
+        // 类型转换
+        if (type === 'integer') {
+            value = parseInt(value, 10);
+            if (isNaN(value)) return;
+        } else if (type === 'number') {
+            value = parseFloat(value);
+            if (isNaN(value)) return;
+        } else if (type === 'boolean' || el.tagName === 'SELECT') {
+            if (value === 'true') value = true;
+            else if (value === 'false') value = false;
+        } else if (type === 'array' || type === 'object') {
+            try {
+                value = JSON.parse(value);
+            } catch (e) {
+                return; // JSON 解析失败则跳过
+            }
+        }
+        
+        obj[key] = value;
+    });
+    return obj;
+}
+
+// 保存字段数据
+function saveBodyFieldsData() {
+    if (!currentApi) return;
+    const data = getDebugData(currentApi.path, currentApi.method);
+    data.bodyFields = {};
+    document.querySelectorAll('[data-body-field]').forEach(el => {
+        data.bodyFields[el.dataset.bodyField] = el.value;
+    });
+    saveDebugData(currentApi.path, currentApi.method, data);
+}
+
+// 切换编辑模式
+function toggleBodyEditMode() {
+    const formMode = document.getElementById('body-form-mode');
+    const jsonMode = document.getElementById('body-json-mode');
+    const btn = document.getElementById('body-mode-btn');
+    
+    if (bodyEditMode === 'form') {
+        // 切换到 JSON 模式
+        bodyEditMode = 'json';
+        formMode.classList.add('hidden');
+        jsonMode.classList.remove('hidden');
+        btn.innerHTML = '<i class="fas fa-table mr-1"></i>表单模式';
+        // 同步表单到 JSON
+        syncBodyToJson();
+    } else {
+        // 切换到表单模式
+        bodyEditMode = 'form';
+        formMode.classList.remove('hidden');
+        jsonMode.classList.add('hidden');
+        btn.innerHTML = '<i class="fas fa-edit mr-1"></i>JSON模式';
+        // 从 JSON 同步到表单
+        syncJsonToFields();
+    }
+}
+
+// 从 JSON 同步到表单字段
+function syncJsonToFields() {
+    try {
+        const jsonStr = document.getElementById('debug-body').value;
+        const obj = JSON.parse(jsonStr);
+        document.querySelectorAll('[data-body-field]').forEach(el => {
+            const key = el.dataset.bodyField;
+            if (obj[key] !== undefined) {
+                const value = obj[key];
+                if (typeof value === 'object') {
+                    el.value = JSON.stringify(value);
+                } else {
+                    el.value = String(value);
+                }
+            }
+        });
+    } catch (e) {
+        // JSON 解析失败，忽略
     }
 }
 
