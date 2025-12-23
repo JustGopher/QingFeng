@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2024-12-24
+
+### Added
+- 📊 **响应结构展示** - 支持查看响应数据的 Model 结构，包含字段类型和注释 (#1)
+- 📝 **请求体结构化** - 请求体 body 参数结构化展示，显示字段名、类型、必填、说明 (#2)
+- ⚙️ **自定义 swag 参数** - 支持配置 SwagArgs 传入任意 swag init 参数 (#3)
+- 📁 **多级目录** - 支持通过 tag 分隔符实现多级目录结构 (#4)
+
+### Changed
+- 请求体支持表单模式和 JSON 模式切换
+- Example Value 和 Model 视图切换
+- 修复 allOf 合并时 Example Value 显示为空的问题
+
+### Contributors
+- @JustGopher - 提出 #1, #2, #3, #4 issues
+
 ## [1.3.0] - 2024-12-22
 
 ### Added
