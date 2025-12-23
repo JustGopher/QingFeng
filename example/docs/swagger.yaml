@@ -80,7 +80,7 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 用户登录
       tags:
-      - 认证
+      - Admin-Auth
   /auth/logout:
     post:
       description: 用户登出，使 Token 失效
@@ -99,7 +99,7 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 用户登出
       tags:
-      - 认证
+      - Admin-Auth
   /users:
     get:
       consumes:
@@ -132,7 +132,7 @@ paths:
               type: object
       summary: 获取用户列表
       tags:
-      - 用户管理
+      - Admin-User
     post:
       consumes:
       - application/json
@@ -162,7 +162,7 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 创建用户
       tags:
-      - 用户管理
+      - Admin-User
   /users/{id}:
     delete:
       consumes:
@@ -192,7 +192,7 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 删除用户
       tags:
-      - 用户管理
+      - Admin-User
     get:
       consumes:
       - application/json
@@ -221,7 +221,7 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 获取单个用户
       tags:
-      - 用户管理
+      - Admin-User
     put:
       consumes:
       - application/json
@@ -256,5 +256,5 @@ paths:
             $ref: '#/definitions/main.Response'
       summary: 更新用户
       tags:
-      - 用户管理
+      - Admin-User
 swagger: "2.0"

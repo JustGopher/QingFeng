@@ -25,7 +25,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "认证"
+                    "Admin-Auth"
                 ],
                 "summary": "用户登录",
                 "parameters": [
@@ -74,7 +74,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "认证"
+                    "Admin-Auth"
                 ],
                 "summary": "用户登出",
                 "parameters": [
@@ -106,7 +106,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "用户管理"
+                    "Admin-User"
                 ],
                 "summary": "获取用户列表",
                 "parameters": [
@@ -158,7 +158,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "用户管理"
+                    "Admin-User"
                 ],
                 "summary": "创建用户",
                 "parameters": [
@@ -210,7 +210,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "用户管理"
+                    "Admin-User"
                 ],
                 "summary": "获取单个用户",
                 "parameters": [
@@ -258,7 +258,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "用户管理"
+                    "Admin-User"
                 ],
                 "summary": "更新用户",
                 "parameters": [
@@ -315,7 +315,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "用户管理"
+                    "Admin-User"
                 ],
                 "summary": "删除用户",
                 "parameters": [

@@ -212,54 +212,97 @@ function renderApiList(filter = '') {
         }
     }
     
-    let html = '';
-    const apiCount = Object.values(grouped).reduce((sum, apis) => sum + apis.length, 0);
-    
-    for (const [tag, apis] of Object.entries(grouped)) {
-        const tagInfo = tags.find(t => t.name === tag) || { name: tag, description: '' };
-        const isExpanded = getGroupState(tagInfo.name);
-        html += `
-            <div class="tag-group mb-2">
-                <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" onclick="toggleGroup(this)">
-                    <span><i class="fas fa-folder text-yellow-500 mr-2"></i>${tagInfo.name}</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${apis.length}</span>
-                </div>
-                <div class="tag-apis pl-2" style="display: ${isExpanded ? 'block' : 'none'}">
-        `;
-        
-        for (const { path, method, api } of apis) {
-            const methodClass = `method-${method.toLowerCase()}`;
-            const deprecated = api.deprecated ? 'opacity-50' : '';
-            html += `
-                <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${deprecated}" 
-                     onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
-                    <span class="${methodClass} px-2 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
-                    <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
-                    ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs" title="已废弃"></i>' : ''}
-                </div>
-            `;
-        }
-        
-        html += '</div></div>';
-    }
+    const tree = buildTagTree(grouped, tags);
+    const html = renderTagTree(tree, 0);
     
     if (!html) {
-        html = `<p class="text-center py-8" style="color: var(--text-secondary)">
+        container.innerHTML = `<p class="text-center py-8" style="color: var(--text-secondary)">
             ${filter ? '没有找到匹配的接口' : '暂无接口'}
         </p>`;
+    } else {
+        container.innerHTML = html;
     }
-    
-    container.innerHTML = html;
+}
+
+function buildTagTree(grouped, tagInfos) {
+    const tree = {};
+    for (const [tag, apis] of Object.entries(grouped)) {
+        const parts = tag.split('-');
+        let current = tree;
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const isLast = i === parts.length - 1;
+            if (!current[part]) {
+                current[part] = { _name: parts.slice(0, i + 1).join('-'), _displayName: part, _apis: [], _children: {} };
+            }
+            if (isLast) {
+                current[part]._apis = apis;
+                const tagInfo = tagInfos.find(t => t.name === tag);
+                if (tagInfo?.description) current[part]._description = tagInfo.description;
+            }
+            current = current[part]._children;
+        }
+    }
+    return tree;
+}
+
+function renderTagTree(tree, level) {
+    let html = '';
+    for (const [key, node] of Object.entries(tree)) {
+        const hasChildren = Object.keys(node._children).length > 0;
+        const hasApis = node._apis.length > 0;
+        const totalCount = countApisInNode(node);
+        const isExpanded = getGroupState(node._name);
+        const indent = level > 0 ? 'ml-2' : '';
+        
+        if (hasChildren) {
+            html += `<div class="tag-group mb-1 ${indent}">
+                <div class="px-2 py-1.5 text-sm font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded" onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                    <span class="flex items-center gap-1.5"><i class="fas fa-folder text-yellow-500 text-xs"></i>${escapeHtml(node._displayName)}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${totalCount}</span>
+                </div>
+                <div class="tag-children" style="display: ${isExpanded ? 'block' : 'none'}">
+                    ${hasApis ? renderApiItems(node._apis, level + 1) : ''}
+                    ${renderTagTree(node._children, level + 1)}
+                </div>
+            </div>`;
+        } else if (hasApis) {
+            html += `<div class="tag-group mb-1 ${indent}">
+                <div class="px-2 py-1.5 text-sm font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded" onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                    <span class="flex items-center gap-1.5"><i class="fas fa-folder text-yellow-500 text-xs"></i>${escapeHtml(node._displayName)}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${node._apis.length}</span>
+                </div>
+                <div class="tag-apis" style="display: ${isExpanded ? 'block' : 'none'}">${renderApiItems(node._apis, level + 1)}</div>
+            </div>`;
+        }
+    }
+    return html;
+}
+
+function renderApiItems(apis, level) {
+    const indent = level > 0 ? 'ml-2' : '';
+    return apis.map(({ path, method, api }) => {
+        const methodClass = `method-${method.toLowerCase()}`;
+        const deprecated = api.deprecated ? 'opacity-50' : '';
+        return `<div class="api-item flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs ${deprecated} ${indent}" onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
+            <span class="${methodClass} px-1.5 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 40px; text-align: center">${method}</span>
+            <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
+            ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs"></i>' : ''}
+        </div>`;
+    }).join('');
+}
+
+function countApisInNode(node) {
+    let count = node._apis.length;
+    for (const child of Object.values(node._children)) count += countApisInNode(child);
+    return count;
 }
 
 function toggleGroup(el) {
-    const apis = el.nextElementSibling;
-    const tagName = el.textContent?.trim()?.split('\n')[0]?.trim();
-    const isHidden = apis.style.display === 'none';
-    
-    apis.style.display = isHidden ? 'block' : 'none';
-    
-    // 保存折叠状态
+    const content = el.nextElementSibling;
+    const tagName = el.dataset.tag || el.textContent?.trim()?.split('\n')[0]?.trim();
+    const isHidden = content.style.display === 'none';
+    content.style.display = isHidden ? 'block' : 'none';
     saveGroupState(tagName, isHidden);
 }
 

@@ -186,7 +186,7 @@ async function loadSwagger() {
     }
 }
 
-// Render API list grouped by tags
+// Render API list grouped by tags with multi-level support
 function renderApiList(filter = '') {
     const container = document.getElementById('api-list');
     const paths = swaggerData.paths || {};
@@ -212,54 +212,143 @@ function renderApiList(filter = '') {
         }
     }
     
-    let html = '';
-    const apiCount = Object.values(grouped).reduce((sum, apis) => sum + apis.length, 0);
+    // Build multi-level tree structure
+    const tree = buildTagTree(grouped, tags);
+    
+    // Render tree
+    const html = renderTagTree(tree, 0);
+    
+    if (!html) {
+        container.innerHTML = `<p class="text-center py-8" style="color: var(--text-secondary)">
+            ${filter ? '没有找到匹配的接口' : '暂无接口'}
+        </p>`;
+    } else {
+        container.innerHTML = html;
+    }
+}
+
+// Build hierarchical tree from flat tags
+// Tags like "Admin-User", "Admin-Auth" become { Admin: { User: [...], Auth: [...] } }
+function buildTagTree(grouped, tagInfos) {
+    const tree = {};
     
     for (const [tag, apis] of Object.entries(grouped)) {
-        const tagInfo = tags.find(t => t.name === tag) || { name: tag, description: '' };
-        const isExpanded = getGroupState(tagInfo.name);
-        html += `
-            <div class="tag-group mb-2">
-                <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" onclick="toggleGroup(this)">
-                    <span><i class="fas fa-folder text-yellow-500 mr-2"></i>${tagInfo.name}</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${apis.length}</span>
-                </div>
-                <div class="tag-apis pl-2" style="display: ${isExpanded ? 'block' : 'none'}">
-        `;
+        const parts = tag.split('-');
+        let current = tree;
         
-        for (const { path, method, api } of apis) {
-            const methodClass = `method-${method.toLowerCase()}`;
-            const deprecated = api.deprecated ? 'opacity-50' : '';
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const isLast = i === parts.length - 1;
+            
+            if (!current[part]) {
+                current[part] = {
+                    _name: parts.slice(0, i + 1).join('-'),
+                    _displayName: part,
+                    _apis: [],
+                    _children: {}
+                };
+            }
+            
+            if (isLast) {
+                current[part]._apis = apis;
+                // Get tag description if available
+                const tagInfo = tagInfos.find(t => t.name === tag);
+                if (tagInfo?.description) {
+                    current[part]._description = tagInfo.description;
+                }
+            }
+            
+            current = current[part]._children;
+        }
+    }
+    
+    return tree;
+}
+
+// Render tree recursively
+function renderTagTree(tree, level) {
+    let html = '';
+    
+    for (const [key, node] of Object.entries(tree)) {
+        const hasChildren = Object.keys(node._children).length > 0;
+        const hasApis = node._apis.length > 0;
+        const totalCount = countApisInNode(node);
+        const isExpanded = getGroupState(node._name);
+        const indent = level > 0 ? 'ml-3' : '';
+        
+        if (hasChildren) {
+            // This is a parent folder
             html += `
-                <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${deprecated}" 
-                     onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
-                    <span class="${methodClass} px-2 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
-                    <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
-                    ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs" title="已废弃"></i>' : ''}
+                <div class="tag-group mb-1 ${indent}">
+                    <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" 
+                         onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-folder text-yellow-500"></i>
+                            <span>${escapeHtml(node._displayName)}</span>
+                        </span>
+                        <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${totalCount}</span>
+                    </div>
+                    <div class="tag-children" style="display: ${isExpanded ? 'block' : 'none'}">
+                        ${hasApis ? renderApiItems(node._apis, level + 1) : ''}
+                        ${renderTagTree(node._children, level + 1)}
+                    </div>
+                </div>
+            `;
+        } else if (hasApis) {
+            // This is a leaf folder with APIs
+            html += `
+                <div class="tag-group mb-1 ${indent}">
+                    <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" 
+                         onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-folder text-yellow-500"></i>
+                            <span>${escapeHtml(node._displayName)}</span>
+                        </span>
+                        <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${node._apis.length}</span>
+                    </div>
+                    <div class="tag-apis" style="display: ${isExpanded ? 'block' : 'none'}">
+                        ${renderApiItems(node._apis, level + 1)}
+                    </div>
                 </div>
             `;
         }
-        
-        html += '</div></div>';
     }
     
-    if (!html) {
-        html = `<p class="text-center py-8" style="color: var(--text-secondary)">
-            ${filter ? '没有找到匹配的接口' : '暂无接口'}
-        </p>`;
+    return html;
+}
+
+// Render API items
+function renderApiItems(apis, level) {
+    const indent = level > 0 ? 'ml-3' : '';
+    return apis.map(({ path, method, api }) => {
+        const methodClass = `method-${method.toLowerCase()}`;
+        const deprecated = api.deprecated ? 'opacity-50' : '';
+        return `
+            <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${deprecated} ${indent}" 
+                 onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
+                <span class="${methodClass} px-2 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
+                <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
+                ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs" title="已废弃"></i>' : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// Count total APIs in a node (including children)
+function countApisInNode(node) {
+    let count = node._apis.length;
+    for (const child of Object.values(node._children)) {
+        count += countApisInNode(child);
     }
-    
-    container.innerHTML = html;
+    return count;
 }
 
 function toggleGroup(el) {
-    const apis = el.nextElementSibling;
-    const tagName = el.textContent?.trim()?.split('\n')[0]?.trim();
-    const isHidden = apis.style.display === 'none';
+    const content = el.nextElementSibling;
+    const tagName = el.dataset.tag || el.textContent?.trim()?.split('\n')[0]?.trim();
+    const isHidden = content.style.display === 'none';
     
-    apis.style.display = isHidden ? 'block' : 'none';
-    
-    // 保存折叠状态
+    content.style.display = isHidden ? 'block' : 'none';
     saveGroupState(tagName, isHidden);
 }
 

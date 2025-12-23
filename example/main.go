@@ -96,7 +96,7 @@ type LoginResponse struct {
 
 // @Summary 获取用户列表
 // @Description 获取所有用户的列表
-// @Tags 用户管理
+// @Tags Admin-User
 // @Accept json
 // @Produce json
 // @Param page query int false "页码" default(1)
@@ -113,7 +113,7 @@ func getUsers(c *gin.Context) {
 
 // @Summary 获取单个用户
 // @Description 根据ID获取用户详情
-// @Tags 用户管理
+// @Tags Admin-User
 // @Accept json
 // @Produce json
 // @Param id path int true "用户ID"
@@ -127,7 +127,7 @@ func getUser(c *gin.Context) {
 
 // @Summary 创建用户
 // @Description 创建一个新用户
-// @Tags 用户管理
+// @Tags Admin-User
 // @Accept json
 // @Produce json
 // @Param user body User true "用户信息"
@@ -146,7 +146,7 @@ func createUser(c *gin.Context) {
 
 // @Summary 更新用户
 // @Description 更新用户信息
-// @Tags 用户管理
+// @Tags Admin-User
 // @Accept json
 // @Produce json
 // @Param id path int true "用户ID"
@@ -165,7 +165,7 @@ func updateUser(c *gin.Context) {
 
 // @Summary 删除用户
 // @Description 删除指定用户
-// @Tags 用户管理
+// @Tags Admin-User
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
@@ -179,7 +179,7 @@ func deleteUser(c *gin.Context) {
 
 // @Summary 用户登录
 // @Description 用户登录获取 Token
-// @Tags 认证
+// @Tags Admin-Auth
 // @Accept json
 // @Produce json
 // @Param request body LoginRequest true "登录信息"
@@ -209,7 +209,7 @@ func login(c *gin.Context) {
 
 // @Summary 用户登出
 // @Description 用户登出，使 Token 失效
-// @Tags 认证
+// @Tags Admin-Auth
 // @Produce json
 // @Param Authorization header string true "Bearer Token"
 // @Success 200 {object} Response
