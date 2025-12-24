@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2024-12-25
+
+### Added
+- 📁 **文件上传支持** - formData 类型的 file 参数现在显示文件选择器，支持选择本地文件上传 (#5)
+- 🔧 **FormData 请求** - 自动检测文件参数，使用 multipart/form-data 发送请求
+- 📋 **cURL 文件支持** - 复制 cURL 命令时正确处理文件参数 (-F 格式)
+
+### Changed
+- 优化参数输入区域，文件类型参数显示 "file" 标签
+
 ## [1.4.0] - 2024-12-24
 
 ### Added

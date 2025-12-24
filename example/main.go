@@ -62,6 +62,10 @@ func main() {
 		api.POST("/users", createUser)
 		api.PUT("/users/:id", updateUser)
 		api.DELETE("/users/:id", deleteUser)
+		
+		// 文件上传接口
+		api.POST("/upload/avatar", uploadAvatar)
+		api.POST("/upload/files", uploadFiles)
 	}
 
 	r.Run(":8080")
@@ -216,4 +220,77 @@ func login(c *gin.Context) {
 // @Router /auth/logout [post]
 func logout(c *gin.Context) {
 	c.JSON(http.StatusOK, Response{Code: 200, Message: "登出成功"})
+}
+
+// UploadResponse 上传响应
+type UploadResponse struct {
+	Filename string `json:"filename" example:"avatar.png"`
+	Size     int64  `json:"size" example:"102400"`
+	URL      string `json:"url" example:"https://example.com/uploads/avatar.png"`
+}
+
+// @Summary 上传头像
+// @Description 上传用户头像图片
+// @Tags Upload
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "头像文件"
+// @Param user_id formData int true "用户ID"
+// @Success 200 {object} Response{data=UploadResponse}
+// @Failure 400 {object} Response
+// @Router /upload/avatar [post]
+func uploadAvatar(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "请选择文件: " + err.Error()})
+		return
+	}
+	
+	userID := c.PostForm("user_id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "用户ID不能为空"})
+		return
+	}
+	
+	resp := UploadResponse{
+		Filename: file.Filename,
+		Size:     file.Size,
+		URL:      "https://example.com/uploads/" + file.Filename,
+	}
+	c.JSON(http.StatusOK, Response{Code: 200, Message: "上传成功", Data: resp})
+}
+
+// @Summary 批量上传文件
+// @Description 批量上传多个文件
+// @Tags Upload
+// @Accept multipart/form-data
+// @Produce json
+// @Param files formData file true "文件列表"
+// @Param description formData string false "文件描述"
+// @Success 200 {object} Response{data=[]UploadResponse}
+// @Failure 400 {object} Response
+// @Router /upload/files [post]
+func uploadFiles(c *gin.Context) {
+	form, err := c.MultipartForm()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "解析表单失败: " + err.Error()})
+		return
+	}
+	
+	files := form.File["files"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, Response{Code: 400, Message: "请选择文件"})
+		return
+	}
+	
+	var results []UploadResponse
+	for _, file := range files {
+		results = append(results, UploadResponse{
+			Filename: file.Filename,
+			Size:     file.Size,
+			URL:      "https://example.com/uploads/" + file.Filename,
+		})
+	}
+	
+	c.JSON(http.StatusOK, Response{Code: 200, Message: "上传成功", Data: results})
 }

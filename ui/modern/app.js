@@ -186,7 +186,7 @@ async function loadSwagger() {
     }
 }
 
-// Render API list grouped by tags
+// Render API list grouped by tags with multi-level support
 function renderApiList(filter = '') {
     const container = document.getElementById('api-list');
     const paths = swaggerData.paths || {};
@@ -212,7 +212,10 @@ function renderApiList(filter = '') {
         }
     }
     
+    // Build multi-level tree structure
     const tree = buildTagTree(grouped, tags);
+    
+    // Render tree
     const html = renderTagTree(tree, 0);
     
     if (!html) {
@@ -224,30 +227,48 @@ function renderApiList(filter = '') {
     }
 }
 
+// Build hierarchical tree from flat tags
+// Tags like "Admin-User", "Admin-Auth" become { Admin: { User: [...], Auth: [...] } }
 function buildTagTree(grouped, tagInfos) {
     const tree = {};
+    
     for (const [tag, apis] of Object.entries(grouped)) {
         const parts = tag.split('-');
         let current = tree;
+        
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
             const isLast = i === parts.length - 1;
+            
             if (!current[part]) {
-                current[part] = { _name: parts.slice(0, i + 1).join('-'), _displayName: part, _apis: [], _children: {} };
+                current[part] = {
+                    _name: parts.slice(0, i + 1).join('-'),
+                    _displayName: part,
+                    _apis: [],
+                    _children: {}
+                };
             }
+            
             if (isLast) {
                 current[part]._apis = apis;
+                // Get tag description if available
                 const tagInfo = tagInfos.find(t => t.name === tag);
-                if (tagInfo?.description) current[part]._description = tagInfo.description;
+                if (tagInfo?.description) {
+                    current[part]._description = tagInfo.description;
+                }
             }
+            
             current = current[part]._children;
         }
     }
+    
     return tree;
 }
 
+// Render tree recursively
 function renderTagTree(tree, level) {
     let html = '';
+    
     for (const [key, node] of Object.entries(tree)) {
         const hasChildren = Object.keys(node._children).length > 0;
         const hasApis = node._apis.length > 0;
@@ -256,45 +277,69 @@ function renderTagTree(tree, level) {
         const indent = level > 0 ? 'ml-3' : '';
         
         if (hasChildren) {
-            html += `<div class="tag-group mb-2 ${indent}">
-                <div class="px-3 py-2.5 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all" onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
-                    <span class="flex items-center gap-2"><i class="fas fa-folder text-yellow-500"></i>${escapeHtml(node._displayName)}</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${totalCount}</span>
+            // This is a parent folder
+            html += `
+                <div class="tag-group mb-1 ${indent}">
+                    <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" 
+                         onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-folder text-yellow-500"></i>
+                            <span>${escapeHtml(node._displayName)}</span>
+                        </span>
+                        <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${totalCount}</span>
+                    </div>
+                    <div class="tag-children" style="display: ${isExpanded ? 'block' : 'none'}">
+                        ${hasApis ? renderApiItems(node._apis, level + 1) : ''}
+                        ${renderTagTree(node._children, level + 1)}
+                    </div>
                 </div>
-                <div class="tag-children" style="display: ${isExpanded ? 'block' : 'none'}">
-                    ${hasApis ? renderApiItems(node._apis, level + 1) : ''}
-                    ${renderTagTree(node._children, level + 1)}
-                </div>
-            </div>`;
+            `;
         } else if (hasApis) {
-            html += `<div class="tag-group mb-2 ${indent}">
-                <div class="px-3 py-2.5 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-all" onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
-                    <span class="flex items-center gap-2"><i class="fas fa-folder text-yellow-500"></i>${escapeHtml(node._displayName)}</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${node._apis.length}</span>
+            // This is a leaf folder with APIs
+            html += `
+                <div class="tag-group mb-1 ${indent}">
+                    <div class="px-3 py-2 font-medium flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg" 
+                         onclick="toggleGroup(this)" data-tag="${escapeHtml(node._name)}">
+                        <span class="flex items-center gap-2">
+                            <i class="fas fa-folder text-yellow-500"></i>
+                            <span>${escapeHtml(node._displayName)}</span>
+                        </span>
+                        <span class="text-xs px-2 py-0.5 rounded-full" style="background: var(--bg-tertiary)">${node._apis.length}</span>
+                    </div>
+                    <div class="tag-apis" style="display: ${isExpanded ? 'block' : 'none'}">
+                        ${renderApiItems(node._apis, level + 1)}
+                    </div>
                 </div>
-                <div class="tag-apis" style="display: ${isExpanded ? 'block' : 'none'}">${renderApiItems(node._apis, level + 1)}</div>
-            </div>`;
+            `;
         }
     }
+    
     return html;
 }
 
+// Render API items
 function renderApiItems(apis, level) {
     const indent = level > 0 ? 'ml-3' : '';
     return apis.map(({ path, method, api }) => {
         const methodClass = `method-${method.toLowerCase()}`;
         const deprecated = api.deprecated ? 'opacity-50' : '';
-        return `<div class="api-item flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer text-sm ${deprecated} ${indent}" onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
-            <span class="${methodClass} px-2 py-0.5 rounded-lg text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
-            <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
-            ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs"></i>' : ''}
-        </div>`;
+        return `
+            <div class="api-item flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm ${deprecated} ${indent}" 
+                 onclick="selectApi('${path}', '${method}')" data-path="${path}" data-method="${method}">
+                <span class="${methodClass} px-2 py-0.5 rounded text-white text-xs font-bold uppercase" style="min-width: 50px; text-align: center">${method}</span>
+                <span class="truncate flex-1" title="${api.summary || path}">${api.summary || path}</span>
+                ${api.deprecated ? '<i class="fas fa-ban text-red-400 text-xs" title="已废弃"></i>' : ''}
+            </div>
+        `;
     }).join('');
 }
 
+// Count total APIs in a node (including children)
 function countApisInNode(node) {
     let count = node._apis.length;
-    for (const child of Object.values(node._children)) count += countApisInNode(child);
+    for (const child of Object.values(node._children)) {
+        count += countApisInNode(child);
+    }
     return count;
 }
 
@@ -302,6 +347,7 @@ function toggleGroup(el) {
     const content = el.nextElementSibling;
     const tagName = el.dataset.tag || el.textContent?.trim()?.split('\n')[0]?.trim();
     const isHidden = content.style.display === 'none';
+    
     content.style.display = isHidden ? 'block' : 'none';
     saveGroupState(tagName, isHidden);
 }
@@ -463,18 +509,18 @@ function renderResponseSchema(api) {
         html += `
             <div class="mb-4 last:mb-0">
                 <div class="flex items-center gap-2 mb-3">
-                    <span class="px-3 py-1 rounded-lg text-white text-xs font-semibold ${code.startsWith('2') ? 'bg-green-500' : code.startsWith('4') ? 'bg-yellow-500' : 'bg-red-500'}">${code}</span>
+                    <span class="px-2 py-1 rounded text-white text-xs font-bold ${code.startsWith('2') ? 'bg-green-500' : code.startsWith('4') ? 'bg-yellow-500' : 'bg-red-500'}">${code}</span>
                     <span class="text-sm" style="color: var(--text-secondary)">${escapeHtml(description)}</span>
                 </div>
                 <div class="flex gap-2 mb-3">
-                    <button onclick="switchSchemaView(this, 'example', '${code}')" class="schema-tab schema-tab-${code} px-4 py-1.5 text-sm rounded-xl" style="background: var(--gradient); color: white">Example Value</button>
-                    <button onclick="switchSchemaView(this, 'model', '${code}')" class="schema-tab schema-tab-${code} px-4 py-1.5 text-sm rounded-xl border" style="border-color: var(--border)">Model</button>
+                    <button onclick="switchSchemaView(this, 'example', '${code}')" class="schema-tab schema-tab-${code} px-3 py-1 text-sm rounded-lg" style="background: var(--primary); color: white">Example Value</button>
+                    <button onclick="switchSchemaView(this, 'model', '${code}')" class="schema-tab schema-tab-${code} px-3 py-1 text-sm rounded-lg border" style="border-color: var(--border)">Model</button>
                 </div>
                 <div id="schema-example-${code}" class="schema-content schema-content-${code}">
-                    <pre class="response-panel p-4 overflow-x-auto text-sm"><code>${schema ? syntaxHighlight(JSON.stringify(generateExample(schema), null, 2)) : '// 无响应体'}</code></pre>
+                    <pre class="response-panel rounded-lg p-4 overflow-x-auto text-sm"><code>${schema ? syntaxHighlight(JSON.stringify(generateExample(schema), null, 2)) : '// 无响应体'}</code></pre>
                 </div>
                 <div id="schema-model-${code}" class="schema-content schema-content-${code} hidden">
-                    <div class="rounded-xl p-4 text-sm overflow-x-auto" style="background: var(--bg-tertiary)">
+                    <div class="rounded-lg p-4 text-sm overflow-x-auto" style="background: var(--bg-tertiary)">
                         ${schema ? renderSchemaModel(schema) : '<span style="color: var(--text-secondary)">无响应体结构</span>'}
                     </div>
                 </div>
@@ -487,15 +533,17 @@ function renderResponseSchema(api) {
 }
 
 function switchSchemaView(btn, view, code) {
+    // 更新按钮样式
     document.querySelectorAll(`.schema-tab-${code}`).forEach(tab => {
         tab.style.background = '';
         tab.style.color = '';
         tab.style.borderColor = 'var(--border)';
     });
-    btn.style.background = 'var(--gradient)';
+    btn.style.background = 'var(--primary)';
     btn.style.color = 'white';
-    btn.style.borderColor = 'transparent';
+    btn.style.borderColor = 'var(--primary)';
     
+    // 切换内容
     document.querySelectorAll(`.schema-content-${code}`).forEach(content => {
         content.classList.add('hidden');
     });
@@ -505,13 +553,17 @@ function switchSchemaView(btn, view, code) {
 function renderSchemaModel(schema, depth = 0, parentKey = '') {
     if (depth > 10) return '<span style="color: var(--text-secondary)">...</span>';
     
+    // 处理 $ref
     if (schema.$ref) {
         const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
         const refSchema = swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath];
-        if (refSchema) return renderSchemaModel(refSchema, depth, parentKey);
+        if (refSchema) {
+            return renderSchemaModel(refSchema, depth, parentKey);
+        }
         return `<span class="text-purple-500">${escapeHtml(refPath)}</span>`;
     }
     
+    // 处理 allOf
     if (schema.allOf) {
         let merged = { type: 'object', properties: {} };
         for (const subSchema of schema.allOf) {
@@ -523,6 +575,7 @@ function renderSchemaModel(schema, depth = 0, parentKey = '') {
         return renderSchemaModel(merged, depth, parentKey);
     }
     
+    // 处理数组
     if (schema.type === 'array' && schema.items) {
         return `<div class="flex items-start gap-2">
             <span class="text-orange-500">[</span>
@@ -531,6 +584,7 @@ function renderSchemaModel(schema, depth = 0, parentKey = '') {
         </div>`;
     }
     
+    // 处理对象
     if (schema.type === 'object' || schema.properties) {
         const properties = schema.properties || {};
         const required = schema.required || [];
@@ -560,11 +614,12 @@ function renderSchemaModel(schema, depth = 0, parentKey = '') {
                     </div>
                     <div class="flex-1" style="color: var(--text-secondary)">
                         ${description ? `<span>${escapeHtml(description)}</span>` : ''}
-                        ${example !== '' ? `<span class="text-xs ml-2 opacity-70">示例: ${escapeHtml(String(example))}</span>` : ''}
+                        ${example !== '' ? `<span class="text-xs ml-2" style="color: var(--text-secondary)">示例: ${escapeHtml(String(example))}</span>` : ''}
                     </div>
                 </div>
             `;
             
+            // 递归渲染嵌套对象
             if (prop.type === 'object' || prop.properties || prop.$ref) {
                 html += `<div class="ml-4">${renderSchemaModel(prop, depth + 1, key)}</div>`;
             } else if (prop.type === 'array' && prop.items && (prop.items.type === 'object' || prop.items.properties || prop.items.$ref)) {
@@ -579,6 +634,7 @@ function renderSchemaModel(schema, depth = 0, parentKey = '') {
         return html;
     }
     
+    // 基本类型
     return `<span class="text-purple-500">${escapeHtml(schema.type || 'any')}</span>`;
 }
 
@@ -596,10 +652,14 @@ function getSchemaType(schema) {
         return refPath.split('.').pop();
     }
     if (schema.type === 'array') {
-        if (schema.items) return `${getSchemaType(schema.items)}[]`;
+        if (schema.items) {
+            return `${getSchemaType(schema.items)}[]`;
+        }
         return 'array';
     }
-    if (schema.allOf) return 'object';
+    if (schema.allOf) {
+        return 'object';
+    }
     return schema.type || 'object';
 }
 
@@ -683,18 +743,31 @@ function renderDebugPanel(api, path) {
     if (nonBodyParams.length > 0) {
         container.innerHTML = nonBodyParams.map(p => {
             const savedValue = savedData.params?.[p.name] || '';
+            const isFileParam = p.in === 'formData' && p.type === 'file';
             return `
             <div class="mb-3">
                 <label class="block text-sm font-medium mb-1">
                     ${p.name} 
                     <span class="text-xs px-1.5 py-0.5 rounded" style="background: var(--bg-tertiary)">${p.in}</span>
+                    ${isFileParam ? '<span class="text-xs px-1.5 py-0.5 rounded ml-1" style="background: var(--primary); color: white">file</span>' : ''}
                     ${p.required ? '<span class="text-red-500">*</span>' : ''}
                 </label>
+                ${isFileParam ? `
+                <div class="file-input-wrapper">
+                    <input type="file" class="input-field w-full rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:cursor-pointer" 
+                           data-param="${p.name}" data-in="${p.in}" data-type="file"
+                           ${p.description ? `title="${p.description}"` : ''}
+                           multiple
+                           onchange="updateFileList(this)">
+                    <div class="file-list mt-2 text-sm" style="color: var(--text-secondary)"></div>
+                </div>
+                ` : `
                 <input type="text" class="input-field w-full rounded-lg px-3 py-2" 
                        data-param="${p.name}" data-in="${p.in}" 
                        placeholder="${p.description || p.name}"
                        value="${escapeHtml(savedValue)}"
                        oninput="saveDebugParam('${p.name}', this.value)">
+                `}
             </div>
         `}).join('');
     } else {
@@ -707,10 +780,16 @@ function renderDebugPanel(api, path) {
         const bodyParam = params.find(p => p.in === 'body');
         const schema = api.requestBody?.content?.['application/json']?.schema || bodyParam?.schema;
         
+        // 保存当前 schema 供后续使用
         currentBodySchema = schema ? resolveSchemaFull(schema) : null;
+        
+        // 渲染结构化表单
         renderBodyFields(currentBodySchema, savedData.bodyFields || {});
+        
+        // 同步到 JSON 文本框
         syncBodyToJson();
         
+        // 监听 JSON 文本框变化
         document.getElementById('debug-body').oninput = function() {
             saveDebugBody(this.value);
         };
@@ -720,26 +799,37 @@ function renderDebugPanel(api, path) {
     }
 }
 
+// 当前请求体的 schema
 let currentBodySchema = null;
+// 当前编辑模式: 'form' 或 'json'
 let bodyEditMode = 'form';
 
+// 完整解析 schema，包括 $ref 和 allOf
 function resolveSchemaFull(schema) {
     if (!schema) return null;
+    
     if (schema.$ref) {
         const refPath = schema.$ref.replace('#/definitions/', '').replace('#/components/schemas/', '');
         const refSchema = swaggerData.definitions?.[refPath] || swaggerData.components?.schemas?.[refPath];
         if (refSchema) return resolveSchemaFull(refSchema);
         return { type: 'object', properties: {} };
     }
+    
     if (schema.allOf) {
         let merged = { type: 'object', properties: {}, required: [] };
         for (const subSchema of schema.allOf) {
             const resolved = resolveSchemaFull(subSchema);
-            if (resolved.properties) merged.properties = { ...merged.properties, ...resolved.properties };
-            if (resolved.required) merged.required = [...merged.required, ...resolved.required];
+            if (resolved.properties) {
+                merged.properties = { ...merged.properties, ...resolved.properties };
+            }
+            if (resolved.required) {
+                merged.required = [...merged.required, ...resolved.required];
+            }
         }
         return merged;
     }
+    
+    // 递归解析 properties 中的 $ref
     if (schema.properties) {
         const resolvedProps = {};
         for (const [key, prop] of Object.entries(schema.properties)) {
@@ -747,28 +837,33 @@ function resolveSchemaFull(schema) {
         }
         return { ...schema, properties: resolvedProps };
     }
+    
+    // 解析数组的 items
     if (schema.type === 'array' && schema.items) {
         return { ...schema, items: resolveSchemaFull(schema.items) };
     }
+    
     return schema;
 }
 
+// 渲染请求体字段表单
 function renderBodyFields(schema, savedValues) {
     const container = document.getElementById('body-fields-container');
     if (!schema || !schema.properties) {
         container.innerHTML = '<p class="text-sm" style="color: var(--text-secondary)">无结构化字段</p>';
         return;
     }
+    
     const properties = schema.properties;
     const required = schema.required || [];
     
     let html = '<div class="overflow-x-auto"><table class="w-full text-sm">';
     html += `<thead><tr style="border-bottom: 1px solid var(--border)">
-        <th class="text-left py-2 px-3 font-medium">字段名</th>
-        <th class="text-left py-2 px-3 font-medium">类型</th>
-        <th class="text-left py-2 px-3 font-medium">必填</th>
-        <th class="text-left py-2 px-3 font-medium" style="min-width: 200px">值</th>
-        <th class="text-left py-2 px-3 font-medium">说明</th>
+        <th class="text-left py-2 px-2 font-medium">字段名</th>
+        <th class="text-left py-2 px-2 font-medium">类型</th>
+        <th class="text-left py-2 px-2 font-medium">必填</th>
+        <th class="text-left py-2 px-2 font-medium" style="min-width: 200px">值</th>
+        <th class="text-left py-2 px-2 font-medium">说明</th>
     </tr></thead><tbody>`;
     
     for (const [key, prop] of Object.entries(properties)) {
@@ -779,40 +874,82 @@ function renderBodyFields(schema, savedValues) {
         const savedValue = savedValues[key] !== undefined ? savedValues[key] : (example !== undefined ? example : '');
         
         html += `<tr style="border-bottom: 1px solid var(--border)">
-            <td class="py-2 px-3"><span class="font-mono text-blue-500">${escapeHtml(key)}</span></td>
-            <td class="py-2 px-3"><span class="text-xs px-2 py-0.5 rounded-lg" style="background: var(--bg-tertiary)">${escapeHtml(propType)}</span></td>
-            <td class="py-2 px-3">${isRequired ? '<span class="text-red-500 font-medium">*必填</span>' : '<span style="color: var(--text-secondary)">可选</span>'}</td>
-            <td class="py-2 px-3">${renderBodyFieldInput(key, prop, savedValue)}</td>
-            <td class="py-2 px-3" style="color: var(--text-secondary)">${escapeHtml(description)}${example !== undefined ? `<br><span class="text-xs">示例: ${escapeHtml(String(example))}</span>` : ''}</td>
+            <td class="py-2 px-2">
+                <span class="font-mono text-blue-500">${escapeHtml(key)}</span>
+            </td>
+            <td class="py-2 px-2">
+                <span class="text-xs px-1.5 py-0.5 rounded" style="background: var(--bg-tertiary)">${escapeHtml(propType)}</span>
+            </td>
+            <td class="py-2 px-2">
+                ${isRequired ? '<span class="text-red-500 font-medium">*必填</span>' : '<span style="color: var(--text-secondary)">可选</span>'}
+            </td>
+            <td class="py-2 px-2">
+                ${renderBodyFieldInput(key, prop, savedValue)}
+            </td>
+            <td class="py-2 px-2" style="color: var(--text-secondary)">
+                ${escapeHtml(description)}
+                ${example !== undefined ? `<br><span class="text-xs">示例: ${escapeHtml(String(example))}</span>` : ''}
+            </td>
         </tr>`;
     }
+    
     html += '</tbody></table></div>';
     container.innerHTML = html;
 }
 
+// 渲染单个字段的输入控件
 function renderBodyFieldInput(key, prop, value) {
     const type = prop.type || 'string';
     const escapedValue = escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value ?? ''));
     
     if (prop.enum) {
-        const options = prop.enum.map(v => `<option value="${escapeHtml(v)}" ${v === value ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('');
-        return `<select class="input-field w-full rounded-xl px-3 py-2 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()"><option value="">-- 请选择 --</option>${options}</select>`;
+        // 枚举类型用下拉框
+        const options = prop.enum.map(v => 
+            `<option value="${escapeHtml(v)}" ${v === value ? 'selected' : ''}>${escapeHtml(v)}</option>`
+        ).join('');
+        return `<select class="input-field w-full rounded px-2 py-1.5 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()">
+            <option value="">-- 请选择 --</option>${options}
+        </select>`;
     }
+    
     if (type === 'boolean') {
-        return `<select class="input-field w-full rounded-xl px-3 py-2 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()">
-            <option value="">-- 请选择 --</option><option value="true" ${value === true || value === 'true' ? 'selected' : ''}>true</option><option value="false" ${value === false || value === 'false' ? 'selected' : ''}>false</option></select>`;
+        return `<select class="input-field w-full rounded px-2 py-1.5 text-sm" data-body-field="${escapeHtml(key)}" onchange="onBodyFieldChange()">
+            <option value="">-- 请选择 --</option>
+            <option value="true" ${value === true || value === 'true' ? 'selected' : ''}>true</option>
+            <option value="false" ${value === false || value === 'false' ? 'selected' : ''}>false</option>
+        </select>`;
     }
+    
     if (type === 'integer' || type === 'number') {
-        return `<input type="number" class="input-field w-full rounded-xl px-3 py-2 text-sm" data-body-field="${escapeHtml(key)}" data-type="${type}" value="${escapedValue}" oninput="onBodyFieldChange()">`;
+        return `<input type="number" class="input-field w-full rounded px-2 py-1.5 text-sm" 
+            data-body-field="${escapeHtml(key)}" data-type="${type}"
+            value="${escapedValue}" 
+            placeholder="${prop.description || key}"
+            oninput="onBodyFieldChange()">`;
     }
+    
     if (type === 'array' || type === 'object') {
-        return `<textarea class="input-field w-full rounded-xl px-3 py-2 text-sm font-mono" rows="2" data-body-field="${escapeHtml(key)}" data-type="${type}" oninput="onBodyFieldChange()">${escapedValue}</textarea>`;
+        return `<textarea class="input-field w-full rounded px-2 py-1.5 text-sm font-mono" rows="2"
+            data-body-field="${escapeHtml(key)}" data-type="${type}"
+            placeholder='${type === 'array' ? '["item1", "item2"]' : '{"key": "value"}'}'
+            oninput="onBodyFieldChange()">${escapedValue}</textarea>`;
     }
-    return `<input type="text" class="input-field w-full rounded-xl px-3 py-2 text-sm" data-body-field="${escapeHtml(key)}" data-type="string" value="${escapedValue}" oninput="onBodyFieldChange()">`;
+    
+    // 默认字符串输入
+    return `<input type="text" class="input-field w-full rounded px-2 py-1.5 text-sm" 
+        data-body-field="${escapeHtml(key)}" data-type="string"
+        value="${escapedValue}" 
+        placeholder="${prop.description || key}"
+        oninput="onBodyFieldChange()">`;
 }
 
-function onBodyFieldChange() { syncBodyToJson(); saveBodyFieldsData(); }
+// 字段值变化时同步到 JSON
+function onBodyFieldChange() {
+    syncBodyToJson();
+    saveBodyFieldsData();
+}
 
+// 从表单同步到 JSON 文本框
 function syncBodyToJson() {
     const bodyObj = getBodyFromFields();
     const jsonStr = JSON.stringify(bodyObj, null, 2);
@@ -820,59 +957,94 @@ function syncBodyToJson() {
     saveDebugBody(jsonStr);
 }
 
+// 从表单字段获取请求体对象
 function getBodyFromFields() {
     const obj = {};
     document.querySelectorAll('[data-body-field]').forEach(el => {
         const key = el.dataset.bodyField;
         const type = el.dataset.type || 'string';
         let value = el.value;
-        if (value === '') return;
-        if (type === 'integer') { value = parseInt(value, 10); if (isNaN(value)) return; }
-        else if (type === 'number') { value = parseFloat(value); if (isNaN(value)) return; }
-        else if (type === 'boolean' || el.tagName === 'SELECT') { if (value === 'true') value = true; else if (value === 'false') value = false; }
-        else if (type === 'array' || type === 'object') { try { value = JSON.parse(value); } catch (e) { return; } }
+        
+        if (value === '') return; // 跳过空值
+        
+        // 类型转换
+        if (type === 'integer') {
+            value = parseInt(value, 10);
+            if (isNaN(value)) return;
+        } else if (type === 'number') {
+            value = parseFloat(value);
+            if (isNaN(value)) return;
+        } else if (type === 'boolean' || el.tagName === 'SELECT') {
+            if (value === 'true') value = true;
+            else if (value === 'false') value = false;
+        } else if (type === 'array' || type === 'object') {
+            try {
+                value = JSON.parse(value);
+            } catch (e) {
+                return; // JSON 解析失败则跳过
+            }
+        }
+        
         obj[key] = value;
     });
     return obj;
 }
 
+// 保存字段数据
 function saveBodyFieldsData() {
     if (!currentApi) return;
     const data = getDebugData(currentApi.path, currentApi.method);
     data.bodyFields = {};
-    document.querySelectorAll('[data-body-field]').forEach(el => { data.bodyFields[el.dataset.bodyField] = el.value; });
+    document.querySelectorAll('[data-body-field]').forEach(el => {
+        data.bodyFields[el.dataset.bodyField] = el.value;
+    });
     saveDebugData(currentApi.path, currentApi.method, data);
 }
 
+// 切换编辑模式
 function toggleBodyEditMode() {
     const formMode = document.getElementById('body-form-mode');
     const jsonMode = document.getElementById('body-json-mode');
     const btn = document.getElementById('body-mode-btn');
+    
     if (bodyEditMode === 'form') {
+        // 切换到 JSON 模式
         bodyEditMode = 'json';
         formMode.classList.add('hidden');
         jsonMode.classList.remove('hidden');
         btn.innerHTML = '<i class="fas fa-table mr-1"></i>表单模式';
+        // 同步表单到 JSON
         syncBodyToJson();
     } else {
+        // 切换到表单模式
         bodyEditMode = 'form';
         formMode.classList.remove('hidden');
         jsonMode.classList.add('hidden');
         btn.innerHTML = '<i class="fas fa-edit mr-1"></i>JSON模式';
+        // 从 JSON 同步到表单
         syncJsonToFields();
     }
 }
 
+// 从 JSON 同步到表单字段
 function syncJsonToFields() {
     try {
-        const obj = JSON.parse(document.getElementById('debug-body').value);
+        const jsonStr = document.getElementById('debug-body').value;
+        const obj = JSON.parse(jsonStr);
         document.querySelectorAll('[data-body-field]').forEach(el => {
             const key = el.dataset.bodyField;
             if (obj[key] !== undefined) {
-                el.value = typeof obj[key] === 'object' ? JSON.stringify(obj[key]) : String(obj[key]);
+                const value = obj[key];
+                if (typeof value === 'object') {
+                    el.value = JSON.stringify(value);
+                } else {
+                    el.value = String(value);
+                }
             }
         });
-    } catch (e) {}
+    } catch (e) {
+        // JSON 解析失败，忽略
+    }
 }
 
 // ==================== 调试数据持久化 ====================
@@ -1145,6 +1317,36 @@ function maskValue(key, value) {
     return value;
 }
 
+// 更新文件列表显示
+function updateFileList(input) {
+    const fileList = input.parentElement.querySelector('.file-list');
+    if (!fileList) return;
+    
+    const files = input.files;
+    if (!files || files.length === 0) {
+        fileList.innerHTML = '';
+        return;
+    }
+    
+    if (files.length === 1) {
+        fileList.innerHTML = `<div class="flex items-center gap-2"><i class="fas fa-file text-blue-500"></i>${escapeHtml(files[0].name)} <span class="text-xs">(${formatFileSize(files[0].size)})</span></div>`;
+    } else {
+        let html = `<div class="mb-1"><i class="fas fa-files text-blue-500 mr-1"></i>已选择 ${files.length} 个文件:</div><ul class="ml-4 space-y-1">`;
+        for (let i = 0; i < files.length; i++) {
+            html += `<li class="flex items-center gap-2"><i class="fas fa-file-alt text-gray-400"></i>${escapeHtml(files[i].name)} <span class="text-xs">(${formatFileSize(files[i].size)})</span></li>`;
+        }
+        html += '</ul>';
+        fileList.innerHTML = html;
+    }
+}
+
+// 格式化文件大小
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1379,6 +1581,8 @@ function copyCurl() {
     
     const queryParams = new URLSearchParams();
     const headers = {};
+    const formDataParams = [];
+    let hasFileInput = false;
     
     // 收集全局 headers
     globalHeaders.forEach(h => {
@@ -1389,16 +1593,22 @@ function copyCurl() {
     document.querySelectorAll('#debug-params-container input').forEach(input => {
         const name = input.dataset.param;
         const location = input.dataset.in;
-        const value = input.value;
-        
-        if (!value) return;
+        const isFile = input.dataset.type === 'file';
+        const value = isFile ? null : input.value;
         
         if (location === 'path') {
-            url = url.replace(`{${name}}`, encodeURIComponent(value));
+            if (value) url = url.replace(`{${name}}`, encodeURIComponent(value));
         } else if (location === 'query') {
-            queryParams.append(name, value);
+            if (value) queryParams.append(name, value);
         } else if (location === 'header') {
-            headers[name] = value;
+            if (value) headers[name] = value;
+        } else if (location === 'formData') {
+            if (isFile && input.files && input.files.length > 0) {
+                hasFileInput = true;
+                formDataParams.push({ name, file: input.files[0].name });
+            } else if (!isFile && value) {
+                formDataParams.push({ name, value });
+            }
         }
     });
     
@@ -1412,11 +1622,22 @@ function copyCurl() {
         curl += ` \\\n  -H '${key}: ${value}'`;
     }
     
-    // 添加 body
-    const bodyInput = document.getElementById('debug-body');
-    if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
-        curl += ` \\\n  -H 'Content-Type: application/json'`;
-        curl += ` \\\n  -d '${bodyInput.value.replace(/'/g, "\\'")}'`;
+    // 添加 formData 参数（包括文件）
+    if (formDataParams.length > 0) {
+        for (const param of formDataParams) {
+            if (param.file) {
+                curl += ` \\\n  -F '${param.name}=@${param.file}'`;
+            } else {
+                curl += ` \\\n  -F '${param.name}=${param.value}'`;
+            }
+        }
+    } else {
+        // 添加 body
+        const bodyInput = document.getElementById('debug-body');
+        if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
+            curl += ` \\\n  -H 'Content-Type: application/json'`;
+            curl += ` \\\n  -d '${bodyInput.value.replace(/'/g, "\\'")}'`;
+        }
     }
     
     navigator.clipboard.writeText(curl).then(() => {
@@ -1461,7 +1682,21 @@ async function sendRequest() {
     let url = getCurrentBaseUrl() + path;
     
     const queryParams = new URLSearchParams();
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {};
+    let hasFileInput = false;
+    const formData = new FormData();
+    
+    // 检查是否有文件输入
+    document.querySelectorAll('#debug-params-container input[data-type="file"]').forEach(input => {
+        if (input.files && input.files.length > 0) {
+            hasFileInput = true;
+        }
+    });
+    
+    // 如果没有文件，使用 JSON
+    if (!hasFileInput) {
+        headers['Content-Type'] = 'application/json';
+    }
     
     globalHeaders.forEach(h => {
         if (h.key && h.value && isValidHeaderKey(h.key)) {
@@ -1472,16 +1707,25 @@ async function sendRequest() {
     document.querySelectorAll('#debug-params-container input').forEach(input => {
         const name = input.dataset.param;
         const location = input.dataset.in;
-        const value = input.value;
-        
-        if (!value) return;
+        const isFile = input.dataset.type === 'file';
+        const value = isFile ? null : input.value;
         
         if (location === 'path') {
-            url = url.replace(`{${name}}`, encodeURIComponent(value));
+            if (value) url = url.replace(`{${name}}`, encodeURIComponent(value));
         } else if (location === 'query') {
-            queryParams.append(name, value);
+            if (value) queryParams.append(name, value);
         } else if (location === 'header' && isValidHeaderKey(name)) {
-            headers[name] = encodeHeaderValue(value);
+            if (value) headers[name] = encodeHeaderValue(value);
+        } else if (location === 'formData') {
+            if (isFile && input.files && input.files.length > 0) {
+                // 文件参数
+                for (let i = 0; i < input.files.length; i++) {
+                    formData.append(name, input.files[i]);
+                }
+            } else if (!isFile && value) {
+                // 普通 formData 参数
+                formData.append(name, value);
+            }
         }
     });
     
@@ -1489,7 +1733,11 @@ async function sendRequest() {
     
     let body = null;
     const bodyInput = document.getElementById('debug-body');
-    if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
+    
+    if (hasFileInput) {
+        // 使用 FormData 发送（包含文件）
+        body = formData;
+    } else if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
         body = bodyInput.value;
     }
     

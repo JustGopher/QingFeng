@@ -743,18 +743,31 @@ function renderDebugPanel(api, path) {
     if (nonBodyParams.length > 0) {
         container.innerHTML = nonBodyParams.map(p => {
             const savedValue = savedData.params?.[p.name] || '';
+            const isFileParam = p.in === 'formData' && p.type === 'file';
             return `
             <div class="mb-3">
                 <label class="block text-sm font-medium mb-1">
                     ${p.name} 
                     <span class="text-xs px-1.5 py-0.5 rounded" style="background: var(--bg-tertiary)">${p.in}</span>
+                    ${isFileParam ? '<span class="text-xs px-1.5 py-0.5 rounded ml-1" style="background: var(--primary); color: white">file</span>' : ''}
                     ${p.required ? '<span class="text-red-500">*</span>' : ''}
                 </label>
+                ${isFileParam ? `
+                <div class="file-input-wrapper">
+                    <input type="file" class="input-field w-full rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:cursor-pointer" 
+                           data-param="${p.name}" data-in="${p.in}" data-type="file"
+                           ${p.description ? `title="${p.description}"` : ''}
+                           multiple
+                           onchange="updateFileList(this)">
+                    <div class="file-list mt-2 text-sm" style="color: var(--text-secondary)"></div>
+                </div>
+                ` : `
                 <input type="text" class="input-field w-full rounded-lg px-3 py-2" 
                        data-param="${p.name}" data-in="${p.in}" 
                        placeholder="${p.description || p.name}"
                        value="${escapeHtml(savedValue)}"
                        oninput="saveDebugParam('${p.name}', this.value)">
+                `}
             </div>
         `}).join('');
     } else {
@@ -1304,6 +1317,36 @@ function maskValue(key, value) {
     return value;
 }
 
+// 更新文件列表显示
+function updateFileList(input) {
+    const fileList = input.parentElement.querySelector('.file-list');
+    if (!fileList) return;
+    
+    const files = input.files;
+    if (!files || files.length === 0) {
+        fileList.innerHTML = '';
+        return;
+    }
+    
+    if (files.length === 1) {
+        fileList.innerHTML = `<div class="flex items-center gap-2"><i class="fas fa-file text-blue-500"></i>${escapeHtml(files[0].name)} <span class="text-xs">(${formatFileSize(files[0].size)})</span></div>`;
+    } else {
+        let html = `<div class="mb-1"><i class="fas fa-files text-blue-500 mr-1"></i>已选择 ${files.length} 个文件:</div><ul class="ml-4 space-y-1">`;
+        for (let i = 0; i < files.length; i++) {
+            html += `<li class="flex items-center gap-2"><i class="fas fa-file-alt text-gray-400"></i>${escapeHtml(files[i].name)} <span class="text-xs">(${formatFileSize(files[i].size)})</span></li>`;
+        }
+        html += '</ul>';
+        fileList.innerHTML = html;
+    }
+}
+
+// 格式化文件大小
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1538,6 +1581,8 @@ function copyCurl() {
     
     const queryParams = new URLSearchParams();
     const headers = {};
+    const formDataParams = [];
+    let hasFileInput = false;
     
     // 收集全局 headers
     globalHeaders.forEach(h => {
@@ -1548,16 +1593,22 @@ function copyCurl() {
     document.querySelectorAll('#debug-params-container input').forEach(input => {
         const name = input.dataset.param;
         const location = input.dataset.in;
-        const value = input.value;
-        
-        if (!value) return;
+        const isFile = input.dataset.type === 'file';
+        const value = isFile ? null : input.value;
         
         if (location === 'path') {
-            url = url.replace(`{${name}}`, encodeURIComponent(value));
+            if (value) url = url.replace(`{${name}}`, encodeURIComponent(value));
         } else if (location === 'query') {
-            queryParams.append(name, value);
+            if (value) queryParams.append(name, value);
         } else if (location === 'header') {
-            headers[name] = value;
+            if (value) headers[name] = value;
+        } else if (location === 'formData') {
+            if (isFile && input.files && input.files.length > 0) {
+                hasFileInput = true;
+                formDataParams.push({ name, file: input.files[0].name });
+            } else if (!isFile && value) {
+                formDataParams.push({ name, value });
+            }
         }
     });
     
@@ -1571,11 +1622,22 @@ function copyCurl() {
         curl += ` \\\n  -H '${key}: ${value}'`;
     }
     
-    // 添加 body
-    const bodyInput = document.getElementById('debug-body');
-    if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
-        curl += ` \\\n  -H 'Content-Type: application/json'`;
-        curl += ` \\\n  -d '${bodyInput.value.replace(/'/g, "\\'")}'`;
+    // 添加 formData 参数（包括文件）
+    if (formDataParams.length > 0) {
+        for (const param of formDataParams) {
+            if (param.file) {
+                curl += ` \\\n  -F '${param.name}=@${param.file}'`;
+            } else {
+                curl += ` \\\n  -F '${param.name}=${param.value}'`;
+            }
+        }
+    } else {
+        // 添加 body
+        const bodyInput = document.getElementById('debug-body');
+        if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
+            curl += ` \\\n  -H 'Content-Type: application/json'`;
+            curl += ` \\\n  -d '${bodyInput.value.replace(/'/g, "\\'")}'`;
+        }
     }
     
     navigator.clipboard.writeText(curl).then(() => {
@@ -1620,7 +1682,21 @@ async function sendRequest() {
     let url = getCurrentBaseUrl() + path;
     
     const queryParams = new URLSearchParams();
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = {};
+    let hasFileInput = false;
+    const formData = new FormData();
+    
+    // 检查是否有文件输入
+    document.querySelectorAll('#debug-params-container input[data-type="file"]').forEach(input => {
+        if (input.files && input.files.length > 0) {
+            hasFileInput = true;
+        }
+    });
+    
+    // 如果没有文件，使用 JSON
+    if (!hasFileInput) {
+        headers['Content-Type'] = 'application/json';
+    }
     
     globalHeaders.forEach(h => {
         if (h.key && h.value && isValidHeaderKey(h.key)) {
@@ -1631,16 +1707,25 @@ async function sendRequest() {
     document.querySelectorAll('#debug-params-container input').forEach(input => {
         const name = input.dataset.param;
         const location = input.dataset.in;
-        const value = input.value;
-        
-        if (!value) return;
+        const isFile = input.dataset.type === 'file';
+        const value = isFile ? null : input.value;
         
         if (location === 'path') {
-            url = url.replace(`{${name}}`, encodeURIComponent(value));
+            if (value) url = url.replace(`{${name}}`, encodeURIComponent(value));
         } else if (location === 'query') {
-            queryParams.append(name, value);
+            if (value) queryParams.append(name, value);
         } else if (location === 'header' && isValidHeaderKey(name)) {
-            headers[name] = encodeHeaderValue(value);
+            if (value) headers[name] = encodeHeaderValue(value);
+        } else if (location === 'formData') {
+            if (isFile && input.files && input.files.length > 0) {
+                // 文件参数
+                for (let i = 0; i < input.files.length; i++) {
+                    formData.append(name, input.files[i]);
+                }
+            } else if (!isFile && value) {
+                // 普通 formData 参数
+                formData.append(name, value);
+            }
         }
     });
     
@@ -1648,7 +1733,11 @@ async function sendRequest() {
     
     let body = null;
     const bodyInput = document.getElementById('debug-body');
-    if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
+    
+    if (hasFileInput) {
+        // 使用 FormData 发送（包含文件）
+        body = formData;
+    } else if (!document.getElementById('debug-body-container').classList.contains('hidden') && bodyInput.value) {
         body = bodyInput.value;
     }
     

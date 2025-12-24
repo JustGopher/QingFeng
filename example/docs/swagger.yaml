@@ -28,6 +28,18 @@ definitions:
         example: success
         type: string
     type: object
+  main.UploadResponse:
+    properties:
+      filename:
+        example: avatar.png
+        type: string
+      size:
+        example: 102400
+        type: integer
+      url:
+        example: https://example.com/uploads/avatar.png
+        type: string
+    type: object
   main.User:
     properties:
       age:
@@ -100,6 +112,77 @@ paths:
       summary: 用户登出
       tags:
       - Admin-Auth
+  /upload/avatar:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传用户头像图片
+      parameters:
+      - description: 头像文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 用户ID
+        in: formData
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/main.UploadResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.Response'
+      summary: 上传头像
+      tags:
+      - Upload
+  /upload/files:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 批量上传多个文件
+      parameters:
+      - description: 文件列表
+        in: formData
+        name: files
+        required: true
+        type: file
+      - description: 文件描述
+        in: formData
+        name: description
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/main.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/main.UploadResponse'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.Response'
+      summary: 批量上传文件
+      tags:
+      - Upload
   /users:
     get:
       consumes:
