@@ -19,16 +19,18 @@ func main() {
 
 	// Register QingFeng documentation UI (注册青锋文档 UI)
 	// 可选主题: qingfeng.ThemeDefault, qingfeng.ThemeMinimal, qingfeng.ThemeModern
+	persistParams := false
 	r.GET("/doc/*any", qingfeng.Handler(qingfeng.Config{
-		Title:        "示例项目 API",
-		Description:  "这是一个示例项目的API文档",
-		Version:      "1.0.0",
-		BasePath:     "/doc",
-		DocPath:      "./docs/swagger.json",
-		EnableDebug:  true,
-		DarkMode:     false,
-		AutoGenerate: true,                   // 启动时自动生成 swagger 文档
-		UITheme:      qingfeng.ThemeDefault,  // UI 主题: ThemeDefault, ThemeMinimal, ThemeModern
+		Title:         "示例项目 API",
+		Description:   "这是一个示例项目的API文档",
+		Version:       "1.0.0",
+		BasePath:      "/doc",
+		DocPath:       "./docs/swagger.json",
+		EnableDebug:   true,
+		DarkMode:      false,
+		AutoGenerate:  true,                  // 启动时自动生成 swagger 文档
+		UITheme:       qingfeng.ThemeDefault, // UI 主题: ThemeDefault, ThemeMinimal, ThemeModern
+		PersistParams: &persistParams,        // 是否保存调试参数到 sessionStorage（默认 true）
 		
 		// 自定义 swag init 参数（可选）
 		// SwagArgs: []string{"--parseDependency", "--parseInternal"},

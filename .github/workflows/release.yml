@@ -1,8 +1,21 @@
-name: Auto Release
+name: Manual Release
 
 on:
-  push:
-    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: '版本类型'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch   # 修复版本 (1.5.7 -> 1.5.8)
+        - minor   # 功能版本 (1.5.7 -> 1.6.0)
+        - major   # 重大版本 (1.5.7 -> 2.0.0)
+      release_notes:
+        description: '发布说明 (可选)'
+        required: false
+        type: string
 
 jobs:
   release:
@@ -22,10 +35,26 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $LATEST_TAG"
           
-          # 解析版本号并递增 patch
+          # 解析版本号
           VERSION=${LATEST_TAG#v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          PATCH=$((PATCH + 1))
+          
+          # 根据输入类型递增版本
+          case "${{ github.event.inputs.version_type }}" in
+            "major")
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            "minor")
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            "patch")
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          
           NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -37,7 +66,8 @@ jobs:
           tag_name: ${{ steps.version.outputs.new_version }}
           name: Release ${{ steps.version.outputs.new_version }}
           body: |
-            自动发布 - 代码更新
+            ${{ github.event.inputs.release_notes || '手动发布新版本' }}
             
-            更新内容请查看 commit 记录
+            ## 更新内容
+            请查看下方自动生成的更新记录
           generate_release_notes: true

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.8] - 2025-01-05
+
+### Added
+- 🔧 **PersistParams 配置** - 新增 `PersistParams` 配置项，控制是否将调试参数保存到 sessionStorage
+  - `nil`（不配置）→ 默认 true，存储参数
+  - `&true` → 存储参数
+  - `&false` → 不存储参数
+
+### Fixed
+- 修复枚举参数默认值不显示问题（header/query/path/formData 参数）
+- 修复 body 字段的 default 默认值不生效问题
+- 布尔类型参数自动渲染为下拉选择框（true/false），无需手动配置枚举
+
 ## [1.5.5] - 2024-12-30
 
 ### Added
